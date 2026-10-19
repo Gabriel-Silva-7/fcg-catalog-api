@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../FCG.Catalog.Application/FCG.Catalog.Application.csproj" />
+    <ProjectReference Include="../FCG.Catalog.Infrastructure/FCG.Catalog.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
