@@ -2,5 +2,8 @@
   <ItemGroup>
     <ProjectReference Include="../FCG.Catalog.Application/FCG.Catalog.Application.csproj" />
     <ProjectReference Include="../FCG.Catalog.Infrastructure/FCG.Catalog.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+    <PackageReference Include="Microsoft.OpenApi" />
   </ItemGroup>
 </Project>

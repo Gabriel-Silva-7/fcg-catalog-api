@@ -2,5 +2,10 @@
   <ItemGroup>
     <ProjectReference Include="../FCG.Catalog.Application/FCG.Catalog.Application.csproj" />
     <ProjectReference Include="../FCG.Catalog.Domain/FCG.Catalog.Domain.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design"><PrivateAssets>all</PrivateAssets><IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets></PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Npgsql" />
   </ItemGroup>
 </Project>
