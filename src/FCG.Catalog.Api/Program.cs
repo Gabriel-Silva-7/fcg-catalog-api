@@ -1,4 +1,6 @@
 using FCG.Catalog.Api;
+using FCG.Catalog.Application.Orders;
+using FCG.Catalog.Infrastructure.Orders;
 using FCG.Catalog.Api.Documentation;
 using FCG.Catalog.Api.Errors;
 using FCG.Catalog.Api.Security;
@@ -8,6 +10,7 @@ using FCG.Catalog.Infrastructure.Catalog;
 using FCG.Catalog.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi;
 
@@ -17,8 +20,15 @@ if (args is ["--healthcheck"])
 var builder = WebApplication.CreateBuilder(args);
 var connection = builder.Configuration.GetConnectionString("Default");
 if (string.IsNullOrWhiteSpace(connection)) throw new InvalidOperationException("ConnectionStrings:Default is required for Catalog.");
-builder.Services.AddDbContext<CatalogDbContext>(options => options.UseNpgsql(connection));
+builder.Services.AddDbContext<CatalogDbContext>(options =>
+{
+    options.UseNpgsql(connection);
+    if (!builder.Environment.IsDevelopment())
+        options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.CommandError, RelationalEventId.ConnectionError,
+            CoreEventId.QueryIterationFailed, CoreEventId.SaveChangesFailed));
+});
 builder.Services.AddScoped<IGameRepository, GameRepository>();
+builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<CreateGameHandler>();
 builder.Services.AddScoped<ListGamesHandler>();

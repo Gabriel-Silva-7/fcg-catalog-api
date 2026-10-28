@@ -10,6 +10,7 @@ public sealed class CatalogDatabaseHealthCheck(CatalogDbContext db) : IHealthChe
     {
         try
         {
+            await db.Orders.AsNoTracking().Take(1).ToArrayAsync(cancellationToken);
             await db.Games.AsNoTracking().Take(1).ToArrayAsync(cancellationToken);
             return HealthCheckResult.Healthy();
         }

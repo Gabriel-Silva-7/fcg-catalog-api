@@ -90,3 +90,26 @@ docker --context orbstack rm -f "$container_id"
 O probe executa `dotnet FCG.Catalog.Api.dll --healthcheck`, consultando readiness no próprio localhost:8080. Retorna 0 para sucesso e 1 para erro/timeout, sem iniciar outro servidor e sem exigir curl/shell. A porta interna deve permanecer 8080; a porta do host pode ser aleatória.
 
 A solução preserva Domain sem frameworks, Application→Domain, Infrastructure→Application/Domain e Api→Application/Infrastructure. Manifestos Kubernetes e a jornada distribuída final pertencem aos próximos incrementos; a pasta k8s ainda documenta essa pendência.
+
+
+## Modelo de pedidos
+
+`Order` guarda UserId/GameId, preço BRL exato e instante UTC de microssegundos como
+snapshot imutável no domínio. Começa Pending, versão1, sem conclusão/motivo.
+Finaliza Approved sem motivo ou Rejected/AmountAboveLimit, versão2. Repetir a mesma
+decisão/data é idempotente; outra decisão/data não altera terminal. A versão é
+um token de concorrência local, sem usar xmin como versão de negócio.
+
+A tabela própria `Orders` tem CHECKs para IDs, preço e combinação de estado,
+conclusão, motivo e versão. Índice único parcial `UX_Orders_OpenUserGame` permite
+somente um Pending ou Approved por usuário/jogo. Rejected libera nova tentativa;
+Approved ocupa o par permanentemente. UserId/GameId são identificadores do
+snapshot, sem FK remota nem leitura de Users. A aplicação de colocação deverá
+validar jogo ativo e selecionar preço do servidor antes de criar o agregado.
+Este incremento não acrescenta endpoint de compra, publicação nem biblioteca.
+
+O repositório participa de transação do chamador. Escrita com versão obsoleta
+falha; chamador precisa usar contexto/transação válidos para uma nova tentativa.
+Readiness consulta também o schema de Orders. Fora de Development, eventos EF
+que carregam exceção/stack são suprimidos; falhas têm descrição fixa no health.
+Não habilitar logging de dados sensíveis em produção.

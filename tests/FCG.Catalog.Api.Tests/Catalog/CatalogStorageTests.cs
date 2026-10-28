@@ -34,8 +34,8 @@ public sealed class CatalogStorageTests(CatalogPostgres postgres) : IClassFixtur
             var persisted = await db.Games.AsNoTracking().SingleAsync(game => game.Id == id);
             Assert.Equal(7.15m, persisted.BasePrice);
         }
-        Assert.Equal("Games,__EFMigrationsHistory", await app.ScalarAsync<string>("SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"));
-        Assert.Equal(1L, await app.ScalarAsync<long>("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+        Assert.Equal("Games,Orders,__EFMigrationsHistory", await app.ScalarAsync<string>("SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"));
+        Assert.Equal(2L, await app.ScalarAsync<long>("SELECT count(*) FROM \"__EFMigrationsHistory\""));
         Assert.False(await app.ScalarAsync<bool>("SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls FROM pg_roles WHERE rolname=current_user"));
         Assert.True(await app.ScalarAsync<bool>("SELECT datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM pg_database WHERE datname=current_database()"));
         Assert.Equal(0L, await app.ScalarAsync<long>("SELECT count(*) FROM information_schema.table_constraints WHERE table_schema='public' AND constraint_type='FOREIGN KEY'"));

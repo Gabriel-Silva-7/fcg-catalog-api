@@ -60,6 +60,59 @@ namespace FCG.Catalog.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_Games_BasePrice_NonNegative", "\"BasePrice\" >= 0");
                         });
                 });
+
+            modelBuilder.Entity("FCG.Catalog.Domain.Orders.Order", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("GameId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("PlacedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "GameId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Orders_OpenUserGame")
+                        .HasFilter("\"Status\" IN ('Pending', 'Approved')");
+
+                    b.HasIndex("UserId", "PlacedAtUtc", "Id");
+
+                    b.ToTable("Orders", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Orders_Identities", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"UserId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"GameId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_Orders_Price", "\"Price\" >= 0");
+
+                            t.HasCheckConstraint("CK_Orders_Result", "(\"Status\" = 'Pending' AND \"CompletedAtUtc\" IS NULL AND \"RejectionReason\" IS NULL AND \"Version\" = 1) OR (\"Status\" = 'Approved' AND \"CompletedAtUtc\" IS NOT NULL AND \"RejectionReason\" IS NULL AND \"Version\" = 2) OR (\"Status\" = 'Rejected' AND \"CompletedAtUtc\" IS NOT NULL AND \"RejectionReason\" IS NOT NULL AND \"RejectionReason\" = 'AmountAboveLimit' AND \"Version\" = 2)");
+                        });
+                });
 #pragma warning restore 612, 618
         }
     }
