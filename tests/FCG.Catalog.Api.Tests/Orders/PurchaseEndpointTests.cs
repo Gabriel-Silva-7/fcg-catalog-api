@@ -39,6 +39,7 @@ public sealed class PurchaseEndpointTests(CatalogPostgres postgres) : IClassFixt
         Assert.Equal("Pending", accepted.GetProperty("status").GetString()); Assert.Equal($"/api/v1/me/orders/{id}", response.Headers.Location!.ToString());
         Assert.Equal(1L, await app.ScalarAsync<long>("SELECT count(*) FROM \"Orders\""));
         Assert.Equal(user, await app.ScalarAsync<Guid>("SELECT \"UserId\" FROM \"Orders\""));
+        Assert.Equal(0L, await app.ScalarAsync<long>("SELECT count(*) FROM \"LibraryEntries\""));
         Assert.Equal(1L, await app.ScalarAsync<long>("SELECT count(*) FROM \"OutboxMessage\""));
         var body = await app.ScalarAsync<string>("SELECT \"Body\" FROM \"OutboxMessage\""); using var envelope = JsonDocument.Parse(body);
         var message = envelope.RootElement.GetProperty("message");

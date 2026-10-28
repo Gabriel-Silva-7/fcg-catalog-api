@@ -19,6 +19,8 @@ public sealed class PendingOrderCommitter(IServiceScopeFactory scopes) : IPendin
             var db = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({"pair:" + order.UserId + ":" + order.GameId}, 0))", cancellationToken);
+            if (await db.LibraryEntries.AsNoTracking().AnyAsync(x => x.UserId == order.UserId && x.GameId == order.GameId, cancellationToken))
+                return new(PlacementStatus.AlreadyAcquired);
             var existing = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.UserId == order.UserId && x.GameId == order.GameId
                 && (x.Status == OrderStatus.Pending || x.Status == OrderStatus.Approved), cancellationToken);
             if (existing is not null)

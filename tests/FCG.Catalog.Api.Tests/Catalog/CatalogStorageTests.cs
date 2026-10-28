@@ -34,11 +34,11 @@ public sealed class CatalogStorageTests(CatalogPostgres postgres) : IClassFixtur
             var persisted = await db.Games.AsNoTracking().SingleAsync(game => game.Id == id);
             Assert.Equal(7.15m, persisted.BasePrice);
         }
-        Assert.Equal("Games,InboxState,Orders,OutboxMessage,OutboxState,__EFMigrationsHistory", await app.ScalarAsync<string>("SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"));
-        Assert.Equal(3L, await app.ScalarAsync<long>("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+        Assert.Equal("Games,InboxState,LibraryEntries,MessageConflicts,Orders,OutboxMessage,OutboxState,PaymentRecoveryAttempts,__EFMigrationsHistory", await app.ScalarAsync<string>("SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"));
+        Assert.Equal(4L, await app.ScalarAsync<long>("SELECT count(*) FROM \"__EFMigrationsHistory\""));
         Assert.False(await app.ScalarAsync<bool>("SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls FROM pg_roles WHERE rolname=current_user"));
         Assert.True(await app.ScalarAsync<bool>("SELECT datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM pg_database WHERE datname=current_database()"));
-        Assert.Equal(0L, await app.ScalarAsync<long>("SELECT count(*) FROM information_schema.table_constraints WHERE table_schema='public' AND constraint_type='FOREIGN KEY' AND table_name NOT IN ('OutboxMessage')"));
+        Assert.Equal(0L, await app.ScalarAsync<long>("SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid=c.confrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE c.contype='f' AND c.connamespace='public'::regnamespace AND (n.nspname<>'public' OR t.relname NOT IN ('Games','Orders','InboxState','OutboxState','MessageConflicts'))"));
         Assert.Equal("18,2", await app.ScalarAsync<string>("SELECT numeric_precision::text || ',' || numeric_scale::text FROM information_schema.columns WHERE table_name='Games' AND column_name='BasePrice'"));
         var error = await Assert.ThrowsAsync<PostgresException>(() => app.ExecuteAsync($"UPDATE \"Games\" SET \"BasePrice\"=-0.01 WHERE \"Id\"='{id}'"));
         Assert.Equal(PostgresErrorCodes.CheckViolation, error.SqlState);

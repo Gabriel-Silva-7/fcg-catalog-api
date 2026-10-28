@@ -24,6 +24,7 @@ Requer SDK 10.0.400, fixado em global.json, PostgreSQL16, RabbitMQ e uma chave p
 | Variável | Obrigatória / padrão | Origem esperada |
 |---|---|---|
 | `RabbitMq__Host` / `RabbitMq__Port` | Host obrigatório, porta padrão5672; sem URL com credenciais | ConfigMap |
+| `Queues__Payments` | Fila durável própria; padrão `fcg-catalog-payments` | ConfigMap |
 | `RabbitMq__VirtualHost` | `/fcg`, obrigatório | ConfigMap |
 | `RabbitMq__Username` / `RabbitMq__Password` | Credencial própria obrigatória, sem padrão; sem tag administrativa | Secret |
 | `ConnectionStrings__Default` | Obrigatória; PostgreSQL do próprio Catalog | Secret |
@@ -39,7 +40,7 @@ Requer SDK 10.0.400, fixado em global.json, PostgreSQL16, RabbitMQ e uma chave p
 
 Catalog recusa configuração de chave privada, PEM privado, PKCS#1 e chave fraca. Apenas Users deve guardar a privada. Assinatura, algoritmo, emissor, audiência, validade e claims únicas `sub`/`role`/`jti` são verificados; sub e jti são GUIDs não vazios, e role é User ou Administrator. JSON ambíguo com membros duplicados é recusado.
 
-**Limite atual:** a autorização usa o papel do token. A projeção local de estado da conta e sua revogação por eventos ainda serão conectadas; esta versão não comprova bloqueio distribuído. O host publica pedidos pelo broker, mas ainda não consome pagamentos nem mantém biblioteca. A integração ponta a ponta e a consulta de pedidos serão acrescentadas nos incrementos correspondentes.
+**Limite atual:** a autorização usa o papel do token. A projeção local de estado da conta e sua revogação por eventos ainda serão conectadas; esta versão não comprova bloqueio distribuído. O host publica pedidos, consome resultados e mantém biblioteca própria. A integração ponta a ponta e a consulta de pedidos/biblioteca serão acrescentadas nos incrementos correspondentes.
 
 Para executar, configure as variáveis acima no ambiente e disponibilize a chave pública. Exemplo de configuração local, sem credenciais reais no Git:
 
@@ -62,7 +63,7 @@ Com Swagger habilitado: `/swagger` e `/swagger/v1/swagger.json`. Criação reque
 
 ## Persistência e saúde
 
-As migrations criam Games, Orders, o schema de outbox e o histórico EF no banco Catalog. InboxState é dependência estrutural do modelo MassTransit; nenhum consumidor/inbox de negócio está habilitado neste incremento. BasePrice é numeric(18,2), com constraint de não negativo. CreatedAtUtc usa timestamp com fuso; CreatedByUserId é UUID de auditoria sem FK externa. Aplicar novamente a migration preserva dados. Falha de configuração/migration impede iniciar; não há reset automático.
+As migrations criam Games, Orders, LibraryEntries, MessageConflicts, PaymentRecoveryAttempts, schema de outbox e histórico EF no banco Catalog. InboxState é dependência estrutural do modelo MassTransit; o consumidor de pagamento usa transação própria e deduplicação permanente de negócio, sem inbox finito do middleware. BasePrice é numeric(18,2), com constraint de não negativo. CreatedAtUtc usa timestamp com fuso; CreatedByUserId é UUID de auditoria sem FK externa. Aplicar novamente a migration preserva dados. Falha de configuração/migration impede iniciar; não há reset automático.
 
 `GET /health/live` é anônimo e independente do PostgreSQL. `GET /health/ready` consulta Games/Orders/outbox, estado do bus e uma conexão AMQP real com limite de2s; retorna200 Healthy ou503 Unhealthy. Banco fora, schema ausente ou permissões insuficientes deixam readiness indisponível. Voltar a iniciar o container do banco não é prova de prontidão; aguarde a condição HTTP de saúde.
 
@@ -114,7 +115,7 @@ somente um Pending ou Approved por usuário/jogo. Rejected libera nova tentativa
 Approved ocupa o par permanentemente. UserId/GameId são identificadores do
 snapshot, sem FK remota nem leitura de Users. A aplicação de colocação deverá
 validar jogo ativo e selecionar preço do servidor antes de criar o agregado.
-A colocação HTTP usa esse agregado; aplicação de pagamento e biblioteca continuam no incremento seguinte.
+A colocação HTTP e a aplicação de pagamento usam esse agregado. A biblioteca guarda a aquisição confirmada na mesma transação do resultado.
 
 O repositório participa de transação do chamador. Escrita com versão obsoleta
 falha; chamador precisa usar contexto/transação válidos para uma nova tentativa.
@@ -157,5 +158,50 @@ topologia transitória só para esconder ausência de consumidor.
 As provas separam stage/rollback de entrega real: testes de atomicidade retiram
 somente o entregador bus outbox; testes HTTP/RabbitMQ mantêm o serviço real. Logs
 OrderPlaced contêm somente titular, jogo, pedido e trace, sem body/JWT/credenciais.
-O schema/outbox da aplicação não prova, sozinho, fluxo completo de pagamento,
-biblioteca, Compose ou Kubernetes.
+Os comportamentos locais e o transporte não comprovam, sozinhos, compra integrada
+entre os quatro serviços, Compose completo ou Kubernetes.
+
+
+## Pagamento, biblioteca e recuperação local
+
+`PaymentProcessedEvent` chega à fila própria `fcg-catalog-payments`; Notifications
+usa outra fila e recebe sua cópia independente. O consumidor valida o contrato
+canônico e, no próprio banco, serializa por OrderId. Não faz transação aninhada com
+middleware nem consulta dados de Users/Payments. Ack ocorre depois do commit local.
+
+Antes de finalizar, UserId/GameId/Price precisam coincidir com o pedido persistido.
+Approved altera Order e cria LibraryEntry com preço e instante originais no mesmo
+commit; Rejected altera somente Order. Jogo inativo ou preço posterior não cancelam
+aceite anterior. Não se revalida estado remoto da conta nessa finalização.
+Duplicado equivalente, mesmo com outro MessageId, não duplica aquisição. Status,
+razão ou data divergentes preservam o primeiro terminal e não compensam biblioteca.
+
+LibraryEntries mantém PK UserId/GameId, AcquisitionPrice numeric18,2 e AcquiredAtUtc.
+OriginOrderId opcional conserva associação ao pedido novo; histórico sem Order
+permanece representável e bloqueia nova compra como já adquirido. FKs só apontam
+para Game/Order do próprio Catalog, sem FKUser. Não remover Game fisicamente com
+histórico; a operação de produto é desativação lógica. A API de consulta preservada
+será acrescentada em CAT07, sem expor o modelo de persistência diretamente.
+
+Pedido desconhecido ou payload incompatível gera MessageConflicts com tipo concreto,
+IDs, payload canônico original, hash, razão e observações. Não cria Order retroativo.
+Erros para gravar diagnóstico provocam rollback/retry; inválido/esgotamento de
+falha transitória seguem para `_error` sem rejeição financeira fictícia. São até
+três novas tentativas1s/5s/15s. O código não apaga estado para forçar sucesso.
+
+A operação local `PaymentApplication.ReplayAsync` usa o registro original, valida
+tipo/hash/identidade e reaplica a mesma regra numa transação própria. Sem pedido,
+continua recuperável; após restauração autorizada e consistente pelo dono, efeito,
+resolução e PaymentRecoveryAttempt comitam juntos. Repetição não duplica aquisição.
+Conflito com terminal permanece diagnosticável, sem selecionar outra decisão.
+Tipo desconhecido ou payload editado é recusado. Biblioteca ausente/incompatível
+para Order jáApproved é diagnóstico de restauração inconsistente; o replay não
+fabrica reparo silencioso. Não editar payload/hash, apagar registro ou recriar pedido
+pela ferramenta. CLI/dry-run operacional serão integrados em INT02; não existe
+endpoint HTTP público de recuperação.
+
+Provas com PostgreSQL real cobrem perda de conexão no commit, rollback conjunto de
+Order/biblioteca e de efeito/resolução/histórico. Transporte real cobre contrato
+inválido, quatro tentativas esgotadas e redrive do mesmo envelope, sem reset. Captura
+de logs Production confirma ausência de detalhes privados/stack. Essas evidências
+continuam distintas da jornada final executada com os quatro serviços reais.

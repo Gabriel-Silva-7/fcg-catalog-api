@@ -61,6 +61,41 @@ namespace FCG.Catalog.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FCG.Catalog.Domain.Library.LibraryEntry", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("GameId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AcquiredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("AcquisitionPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid?>("OriginOrderId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("UserId", "GameId")
+                        .HasName("PK_LibraryEntries");
+
+                    b.HasIndex("GameId");
+
+                    b.HasIndex("OriginOrderId")
+                        .IsUnique()
+                        .HasFilter("\"OriginOrderId\" IS NOT NULL");
+
+                    b.ToTable("LibraryEntries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LibraryEntries_AcquisitionPrice_NonNegative", "\"AcquisitionPrice\" >= 0");
+
+                            t.HasCheckConstraint("CK_LibraryEntries_Identities", "\"UserId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"GameId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+                        });
+                });
+
             modelBuilder.Entity("FCG.Catalog.Domain.Orders.Order", b =>
                 {
                     b.Property<Guid>("Id")
@@ -112,6 +147,99 @@ namespace FCG.Catalog.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_Orders_Result", "(\"Status\" = 'Pending' AND \"CompletedAtUtc\" IS NULL AND \"RejectionReason\" IS NULL AND \"Version\" = 1) OR (\"Status\" = 'Approved' AND \"CompletedAtUtc\" IS NOT NULL AND \"RejectionReason\" IS NULL AND \"Version\" = 2) OR (\"Status\" = 'Rejected' AND \"CompletedAtUtc\" IS NOT NULL AND \"RejectionReason\" IS NOT NULL AND \"RejectionReason\" = 'AmountAboveLimit' AND \"Version\" = 2)");
                         });
+                });
+
+            modelBuilder.Entity("FCG.Catalog.Infrastructure.Persistence.MessageConflict", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("EventVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("FirstSeenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset>("LastSeenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MessageType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("Observations")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<bool>("Resolved")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("ResolvedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("TransportMessageId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Kind", "BusinessId", "EventId", "MessageType", "PayloadHash")
+                        .IsUnique();
+
+                    b.ToTable("MessageConflicts");
+                });
+
+            modelBuilder.Entity("FCG.Catalog.Infrastructure.Persistence.PaymentRecoveryAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AttemptedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConflictId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConflictId", "AttemptedAtUtc");
+
+                    b.ToTable("PaymentRecoveryAttempts");
                 });
 
             modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.InboxState", b =>
@@ -280,6 +408,29 @@ namespace FCG.Catalog.Infrastructure.Persistence.Migrations
                     b.HasIndex("Created");
 
                     b.ToTable("OutboxState");
+                });
+
+            modelBuilder.Entity("FCG.Catalog.Domain.Library.LibraryEntry", b =>
+                {
+                    b.HasOne("FCG.Catalog.Domain.Catalog.Game", null)
+                        .WithMany()
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FCG.Catalog.Domain.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OriginOrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("FCG.Catalog.Infrastructure.Persistence.PaymentRecoveryAttempt", b =>
+                {
+                    b.HasOne("FCG.Catalog.Infrastructure.Persistence.MessageConflict", null)
+                        .WithMany()
+                        .HasForeignKey("ConflictId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.OutboxMessage", b =>

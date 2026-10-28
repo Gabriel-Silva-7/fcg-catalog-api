@@ -48,6 +48,7 @@ public sealed class CatalogTestApplication : WebApplicationFactory<Program>, IAs
     public CapturedLogs Logs { get; } = new();
     public string ConnectionString { get; }
     public HttpClient Client { get; private set; } = null!;
+    public string PaymentsQueue { get; } = "catalog-payments-" + Guid.NewGuid().ToString("N");
     public Guid AdministratorId { get; } = Guid.NewGuid();
     private CatalogTestApplication(CatalogPostgres postgres, Action<IWebHostBuilder>? customize)
     {
@@ -83,7 +84,7 @@ public sealed class CatalogTestApplication : WebApplicationFactory<Program>, IAs
             ["ConnectionStrings:Default"] = ConnectionString,
             ["Jwt:Issuer"] = "fcg-fixture", ["Jwt:Audience"] = "fcg-catalog-fixture",
             ["Jwt:PublicKeyPath"] = Path.Combine(directory, "public.pem"),
-            ["Database:MigrateOnStartup"] = "true", ["Swagger:Enabled"] = "true"
+            ["Database:MigrateOnStartup"] = "true", ["Swagger:Enabled"] = "true", ["Queues:Payments"] = PaymentsQueue
         }) builder.UseSetting(name, value);
         foreach (var pair in postgres.BrokerSettings) builder.UseSetting(pair.Key, pair.Value);
         builder.ConfigureTestServices(services => services.Configure<MassTransitHostOptions>(options => options.WaitUntilStarted = true));
