@@ -10,6 +10,9 @@ Catálogo de jogos em .NET 10, com PostgreSQL próprio e autenticação JWT RS25
 | `GET /api/v1/games` | Público | Lista paginada dos jogos ativos |
 | `GET /api/v1/games/{id}` | Público | Jogo ativo ou 404 |
 | `POST /api/v1/me/library` | Bearer User ou Administrator |202 após pedido + evento duráveis; não concede jogo |
+| `GET /api/v1/me/orders` | Bearer User ou Administrator |Pedidos próprios paginados |
+| `GET /api/v1/me/orders/{id}` | Bearer User ou Administrator |Pedido próprio ou404 opaco |
+| `GET /api/v1/me/library` | Bearer User ou Administrator |Biblioteca própria paginada, incluindo histórico inativo |
 
 Criação: `{ "title": "Celeste", "description": "Platformer", "basePrice": 59.90 }`. Título tem 1–200 caracteres após trim; descrição é opcional e limitada a 2.000. Preço obrigatório entre 0 e 9999999999999999.99, com centavos exatos. Títulos repetidos são permitidos. Retorno: `id`, `title`, `description`, `basePrice`, `currentPrice`, `discountPercentage`, `isActive`. Neste incremento currentPrice=basePrice e desconto=0; promoções e alteração/exclusão de jogos ainda não estão expostas.
 
@@ -40,7 +43,7 @@ Requer SDK 10.0.400, fixado em global.json, PostgreSQL16, RabbitMQ e uma chave p
 
 Catalog recusa configuração de chave privada, PEM privado, PKCS#1 e chave fraca. Apenas Users deve guardar a privada. Assinatura, algoritmo, emissor, audiência, validade e claims únicas `sub`/`role`/`jti` são verificados; sub e jti são GUIDs não vazios, e role é User ou Administrator. JSON ambíguo com membros duplicados é recusado.
 
-**Limite atual:** a autorização usa o papel do token. A projeção local de estado da conta e sua revogação por eventos ainda serão conectadas; esta versão não comprova bloqueio distribuído. O host publica pedidos, consome resultados e mantém biblioteca própria. A integração ponta a ponta e a consulta de pedidos/biblioteca serão acrescentadas nos incrementos correspondentes.
+**Limite atual:** a autorização usa o papel do token. A projeção local de estado da conta e sua revogação por eventos ainda serão conectadas; esta versão não comprova bloqueio distribuído. O host publica pedidos, consome resultados e mantém biblioteca própria. Pedidos e biblioteca são consultáveis pelo próprio titular. A integração ponta a ponta continua pendente.
 
 Para executar, configure as variáveis acima no ambiente e disponibilize a chave pública. Exemplo de configuração local, sem credenciais reais no Git:
 
@@ -133,8 +136,7 @@ resposta, preservando o snapshot selecionado. Promoções serão conectadas em C
 
 202 retorna `orderId,gameId,price,status:"Pending"` e Location
 `/api/v1/me/orders/{id}`. Pedido/evento ficam no mesmo commit; 202 não representa
-pagamento aprovado ou aquisição. As consultas dessa Location serão implementadas
-em CAT07. Se a resposta se perder, consultar os próprios pedidos antes de tentar
+pagamento aprovado ou aquisição. A Location pode ser consultada com o mesmo titular. Se a resposta se perder, consultar os próprios pedidos antes de tentar
 outra compra: não há chave de idempotência de POST.
 
 Jogo inexistente/inativo produz404 antes de duplicidade. Pending do mesmo par
@@ -181,7 +183,7 @@ OriginOrderId opcional conserva associação ao pedido novo; histórico sem Orde
 permanece representável e bloqueia nova compra como já adquirido. FKs só apontam
 para Game/Order do próprio Catalog, sem FKUser. Não remover Game fisicamente com
 histórico; a operação de produto é desativação lógica. A API de consulta preservada
-será acrescentada em CAT07, sem expor o modelo de persistência diretamente.
+retorna somente os campos de histórico contratados, sem expor o modelo de persistência.
 
 Pedido desconhecido ou payload incompatível gera MessageConflicts com tipo concreto,
 IDs, payload canônico original, hash, razão e observações. Não cria Order retroativo.
@@ -205,3 +207,29 @@ Order/biblioteca e de efeito/resolução/histórico. Transporte real cobre contr
 inválido, quatro tentativas esgotadas e redrive do mesmo envelope, sem reset. Captura
 de logs Production confirma ausência de detalhes privados/stack. Essas evidências
 continuam distintas da jornada final executada com os quatro serviços reais.
+
+
+## Consultas do titular
+
+Os três GETs de `/api/v1/me` exigem JWT e usam somente `sub` como titular, inclusive
+para Administrator. Não há seletor administrativo de outro usuário. Pedido alheio
+ou inexistente devolve404 `resource_not_found`, sem dados do titular. Parâmetros
+extras de usuário não alteram o escopo da consulta.
+
+Pedidos retornam `orderId,gameId,price,status,placedAtUtc,completedAtUtc,rejectionReason`.
+Pending tem conclusão/motivo nulos; Approved tem conclusão original/motivo nulo;
+Rejected tem conclusão original/AmountAboveLimit. O primeiro GET depois do202 pode
+observar diretamente o terminal; não depender de visualizar Pending antes.
+
+As listas usam `page`1–1000000 e `pageSize`1–100, padrão1/20, envelope
+`items,page,pageSize,totalCount`. Orders ordena PlacedAtUtc decrescente e OrderId
+crescente no empate. Library preserva AcquiredAtUtc decrescente/GameId crescente.
+Página depois do fim fica vazia com total correto. Contagem/itens são lidos num
+snapshot RepeatableRead/read-only; gravação concorrente entre as duas consultas
+não produz contagem e página de estados diferentes.
+
+Biblioteca mantém a forma herdada `gameId,title,acquiredAt,acquisitionPrice`, mesmo
+para jogo posteriormente inativo e preço alterado. Title vem do registro atual;
+AcquisitionPrice/AcquiredAt são históricos. UserId, versão, OriginOrderId, payloads
+de diagnóstico e credenciais não fazem parte dessas respostas. Swagger descreve
+rotas, paginação, schemas e autorização Bearer.

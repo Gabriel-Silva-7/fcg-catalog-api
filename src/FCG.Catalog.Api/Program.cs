@@ -1,4 +1,6 @@
 using FCG.Catalog.Api;
+using FCG.Catalog.Application.Library;
+using FCG.Catalog.Infrastructure.Library;
 using FCG.Catalog.Infrastructure.Messaging;
 using FCG.Catalog.Application.Orders;
 using FCG.Catalog.Infrastructure.Orders;
@@ -30,6 +32,10 @@ builder.Services.AddDbContext<CatalogDbContext>(options =>
 });
 builder.Services.AddScoped<IGameRepository, GameRepository>();
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+builder.Services.AddScoped<IOrderReadRepository, OrderReadRepository>();
+builder.Services.AddScoped<OwnOrdersHandler>();
+builder.Services.AddScoped<ILibraryReadRepository, LibraryReadRepository>();
+builder.Services.AddScoped<GetMyLibraryHandler>();
 builder.Services.AddScoped<IPendingOrderCommitter, PendingOrderCommitter>();
 builder.Services.AddScoped<PlaceOrderHandler>();
 builder.Services.AddCatalogMessaging(builder.Configuration);
@@ -44,7 +50,7 @@ builder.Services.AddApiProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo { Title = "FCG Catalog API", Version = "v1", Description = "Public game catalog and administrative creation." });
+    options.SwaggerDoc("v1", new OpenApiInfo { Title = "FCG Catalog API", Version = "v1", Description = "Game catalog, asynchronous purchase acceptance and caller-owned order/library queries." });
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "JWT" });
     options.OperationFilter<CatalogSecurityOperationFilter>();
     options.SchemaFilter<CatalogPriceSchemaFilter>();
