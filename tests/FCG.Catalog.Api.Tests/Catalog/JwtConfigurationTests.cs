@@ -70,6 +70,11 @@ public sealed class JwtConfigurationTests
         {
             builder.UseEnvironment("Production");
             builder.UseSetting("ConnectionStrings:Default", "Host=127.0.0.1;Port=1;Database=not-accessible;Username=catalog;Password=test-only;Timeout=1;Command Timeout=1");
+            builder.UseSetting("RabbitMq:Host", "127.0.0.1");
+            builder.UseSetting("RabbitMq:Port", "1");
+            builder.UseSetting("RabbitMq:VirtualHost", "/fcg");
+            builder.UseSetting("RabbitMq:Username", "fcg_catalog");
+            builder.UseSetting("RabbitMq:Password", "test-only");
             builder.UseSetting("Jwt:Issuer", "fcg-fixture");
             builder.UseSetting("Jwt:Audience", "fcg-fixture");
             builder.UseSetting("Jwt:PublicKeyPath", Path.Combine(directory, "key.pem"));

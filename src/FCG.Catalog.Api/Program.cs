@@ -1,4 +1,5 @@
 using FCG.Catalog.Api;
+using FCG.Catalog.Infrastructure.Messaging;
 using FCG.Catalog.Application.Orders;
 using FCG.Catalog.Infrastructure.Orders;
 using FCG.Catalog.Api.Documentation;
@@ -29,6 +30,10 @@ builder.Services.AddDbContext<CatalogDbContext>(options =>
 });
 builder.Services.AddScoped<IGameRepository, GameRepository>();
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+builder.Services.AddScoped<IPendingOrderCommitter, PendingOrderCommitter>();
+builder.Services.AddScoped<PlaceOrderHandler>();
+builder.Services.AddCatalogMessaging(builder.Configuration);
+if (!builder.Environment.IsDevelopment()) builder.Logging.AddFilter("MassTransit", LogLevel.None);
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<CreateGameHandler>();
 builder.Services.AddScoped<ListGamesHandler>();
@@ -43,6 +48,8 @@ builder.Services.AddSwaggerGen(options =>
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "JWT" });
     options.OperationFilter<CatalogSecurityOperationFilter>();
     options.SchemaFilter<CatalogPriceSchemaFilter>();
+    options.OperationFilter<PurchaseOpenApiFilter>();
+    options.SchemaFilter<PurchaseBodySchemaFilter>();
 });
 builder.Services.AddHealthChecks().AddCheck<CatalogDatabaseHealthCheck>("catalog-database", tags: ["ready"]);
 var app = builder.Build();

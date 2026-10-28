@@ -8,6 +8,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Testcontainers.PostgreSql;
+using Testcontainers.RabbitMq;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using MassTransit;
 using Xunit;
 
 namespace FCG.Catalog.Api.Tests.Catalog;
@@ -18,11 +22,19 @@ public sealed class CatalogPostgres : IAsyncLifetime
         .WithImage("postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94")
         .WithDatabase("postgres").WithUsername("postgres").WithPassword("catalog-fixture-only")
         .Build();
+    private readonly string brokerPassword = Guid.NewGuid().ToString("N");
+    public RabbitMqContainer Broker { get; }
+    public CatalogPostgres() => Broker = new RabbitMqBuilder()
+        .WithImage("rabbitmq:4.3.6-management@sha256:54cb013d76cd1fd6c0a0708f34062ad61c452bb6f016b434c6c33f1a765d2b58")
+        .WithUsername("fcg_catalog").WithPassword(brokerPassword).WithEnvironment("RABBITMQ_DEFAULT_VHOST", "/fcg").Build();
+    public IReadOnlyDictionary<string, string> BrokerSettings => new Dictionary<string, string>
+    { ["RabbitMq:Host"] = Broker.Hostname, ["RabbitMq:Port"] = Broker.GetMappedPublicPort(5672).ToString(),
+      ["RabbitMq:VirtualHost"] = "/fcg", ["RabbitMq:Username"] = "fcg_catalog", ["RabbitMq:Password"] = brokerPassword };
     public string ConnectionString => container.GetConnectionString();
-    public Task InitializeAsync() => container.StartAsync();
+    public async Task InitializeAsync() { await container.StartAsync(); await Broker.StartAsync(); }
     public Task PauseAsync() => container.PauseAsync();
     public Task UnpauseAsync() => container.UnpauseAsync();
-    public Task DisposeAsync() => container.DisposeAsync().AsTask();
+    public async Task DisposeAsync() { await Broker.DisposeAsync(); await container.DisposeAsync(); }
 }
 
 public sealed class CatalogTestApplication : WebApplicationFactory<Program>, IAsyncDisposable
@@ -73,6 +85,8 @@ public sealed class CatalogTestApplication : WebApplicationFactory<Program>, IAs
             ["Jwt:PublicKeyPath"] = Path.Combine(directory, "public.pem"),
             ["Database:MigrateOnStartup"] = "true", ["Swagger:Enabled"] = "true"
         }) builder.UseSetting(name, value);
+        foreach (var pair in postgres.BrokerSettings) builder.UseSetting(pair.Key, pair.Value);
+        builder.ConfigureTestServices(services => services.Configure<MassTransitHostOptions>(options => options.WaitUntilStarted = true));
         customize?.Invoke(builder);
     }
     public string Token(string role = "Administrator", string? subject = null, string? jwtId = null,

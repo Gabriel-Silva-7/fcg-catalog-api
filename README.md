@@ -1,6 +1,6 @@
 # FCG Catalog API
 
-Catálogo de jogos em .NET 10, com PostgreSQL próprio e autenticação JWT RS256. O serviço oferece criação administrativa, listagem e detalhe públicos, valida preço sem arredondar frações de centavo e registra o identificador do criador sem consultar o banco de Users.
+Catálogo de jogos em .NET 10, com PostgreSQL próprio e autenticação JWT RS256. O serviço oferece criação administrativa, listagem/detalhe públicos e aceite assíncrono de compra; valida preço sem arredondar frações de centavo e registra o identificador do criador sem consultar o banco de Users.
 
 ## Rotas
 
@@ -9,6 +9,7 @@ Catálogo de jogos em .NET 10, com PostgreSQL próprio e autenticação JWT RS25
 | `POST /api/v1/games` | Bearer com papel `Administrator` | 201, jogo criado e Location para o detalhe |
 | `GET /api/v1/games` | Público | Lista paginada dos jogos ativos |
 | `GET /api/v1/games/{id}` | Público | Jogo ativo ou 404 |
+| `POST /api/v1/me/library` | Bearer User ou Administrator |202 após pedido + evento duráveis; não concede jogo |
 
 Criação: `{ "title": "Celeste", "description": "Platformer", "basePrice": 59.90 }`. Título tem 1–200 caracteres após trim; descrição é opcional e limitada a 2.000. Preço obrigatório entre 0 e 9999999999999999.99, com centavos exatos. Títulos repetidos são permitidos. Retorno: `id`, `title`, `description`, `basePrice`, `currentPrice`, `discountPercentage`, `isActive`. Neste incremento currentPrice=basePrice e desconto=0; promoções e alteração/exclusão de jogos ainda não estão expostas.
 
@@ -18,10 +19,13 @@ Erros usam `application/problem+json`, com `status`, `type`, `code`, `instance` 
 
 ## Configuração
 
-Requer SDK 10.0.400, fixado em global.json, PostgreSQL 16 e uma chave pública correspondente ao emissor Users. O banco/role Catalog devem ser provisionados antes de iniciar; a infraestrutura local está no repositório fcg-orchestration. A role precisa de conexão e privilégios no próprio banco/schema, sem superuser ou acesso ao banco de Users.
+Requer SDK 10.0.400, fixado em global.json, PostgreSQL16, RabbitMQ e uma chave pública correspondente ao emissor Users. O banco/role Catalog devem ser provisionados antes de iniciar; a infraestrutura local está no repositório fcg-orchestration. A role precisa de conexão e privilégios no próprio banco/schema, sem superuser ou acesso ao banco de Users.
 
 | Variável | Obrigatória / padrão | Origem esperada |
 |---|---|---|
+| `RabbitMq__Host` / `RabbitMq__Port` | Host obrigatório, porta padrão5672; sem URL com credenciais | ConfigMap |
+| `RabbitMq__VirtualHost` | `/fcg`, obrigatório | ConfigMap |
+| `RabbitMq__Username` / `RabbitMq__Password` | Credencial própria obrigatória, sem padrão; sem tag administrativa | Secret |
 | `ConnectionStrings__Default` | Obrigatória; PostgreSQL do próprio Catalog | Secret |
 | `Jwt__Issuer` | Obrigatória; exemplo `fcg-users` | ConfigMap |
 | `Jwt__Audience` | Obrigatória; exemplo `fcg-api` | ConfigMap |
@@ -35,12 +39,16 @@ Requer SDK 10.0.400, fixado em global.json, PostgreSQL 16 e uma chave pública c
 
 Catalog recusa configuração de chave privada, PEM privado, PKCS#1 e chave fraca. Apenas Users deve guardar a privada. Assinatura, algoritmo, emissor, audiência, validade e claims únicas `sub`/`role`/`jti` são verificados; sub e jti são GUIDs não vazios, e role é User ou Administrator. JSON ambíguo com membros duplicados é recusado.
 
-**Limite atual:** a autorização usa o papel do token. A projeção local de estado da conta e sua revogação por eventos ainda serão conectadas; esta versão não comprova bloqueio distribuído. Ainda não há consumidores, pedidos, compras, biblioteca ou broker no host.
+**Limite atual:** a autorização usa o papel do token. A projeção local de estado da conta e sua revogação por eventos ainda serão conectadas; esta versão não comprova bloqueio distribuído. O host publica pedidos pelo broker, mas ainda não consome pagamentos nem mantém biblioteca. A integração ponta a ponta e a consulta de pedidos serão acrescentadas nos incrementos correspondentes.
 
 Para executar, configure as variáveis acima no ambiente e disponibilize a chave pública. Exemplo de configuração local, sem credenciais reais no Git:
 
 ```sh
 export ConnectionStrings__Default='Host=localhost;Port=5432;Database=fcg_catalog;Username=fcg_catalog;Password=SUBSTITUA_LOCALMENTE'
+export RabbitMq__Host=localhost
+export RabbitMq__VirtualHost=/fcg
+export RabbitMq__Username=fcg_catalog
+export RabbitMq__Password=SUBSTITUA_LOCALMENTE
 export Jwt__Issuer=fcg-users
 export Jwt__Audience=fcg-api
 export Jwt__PublicKeyPath="$PWD/.local/jwt-public.pem"
@@ -54,13 +62,13 @@ Com Swagger habilitado: `/swagger` e `/swagger/v1/swagger.json`. Criação reque
 
 ## Persistência e saúde
 
-A migration cria Games e o histórico EF no banco Catalog. BasePrice é numeric(18,2), com constraint de não negativo. CreatedAtUtc usa timestamp com fuso; CreatedByUserId é UUID de auditoria sem FK externa. Aplicar novamente a migration preserva dados. Falha de configuração/migration impede iniciar; não há reset automático.
+As migrations criam Games, Orders, o schema de outbox e o histórico EF no banco Catalog. InboxState é dependência estrutural do modelo MassTransit; nenhum consumidor/inbox de negócio está habilitado neste incremento. BasePrice é numeric(18,2), com constraint de não negativo. CreatedAtUtc usa timestamp com fuso; CreatedByUserId é UUID de auditoria sem FK externa. Aplicar novamente a migration preserva dados. Falha de configuração/migration impede iniciar; não há reset automático.
 
-`GET /health/live` é anônimo e independente do PostgreSQL. `GET /health/ready` consulta a tabela Games e retorna 200 Healthy ou 503 Unhealthy. Banco fora, schema ausente ou permissões insuficientes deixam readiness indisponível. Voltar a iniciar o container do banco não é prova de prontidão; aguarde a condição HTTP de saúde.
+`GET /health/live` é anônimo e independente do PostgreSQL. `GET /health/ready` consulta Games/Orders/outbox, estado do bus e uma conexão AMQP real com limite de2s; retorna200 Healthy ou503 Unhealthy. Banco fora, schema ausente ou permissões insuficientes deixam readiness indisponível. Voltar a iniciar o container do banco não é prova de prontidão; aguarde a condição HTTP de saúde.
 
 ## Testes
 
-Docker acessível é necessário para os testes PostgreSQL. O SDK local precisa corresponder ao global.json.
+Docker acessível é necessário para os testes PostgreSQL/RabbitMQ. O SDK local precisa corresponder ao global.json.
 
 ```sh
 dotnet restore FCG.Catalog.sln --locked-mode
@@ -106,10 +114,48 @@ somente um Pending ou Approved por usuário/jogo. Rejected libera nova tentativa
 Approved ocupa o par permanentemente. UserId/GameId são identificadores do
 snapshot, sem FK remota nem leitura de Users. A aplicação de colocação deverá
 validar jogo ativo e selecionar preço do servidor antes de criar o agregado.
-Este incremento não acrescenta endpoint de compra, publicação nem biblioteca.
+A colocação HTTP usa esse agregado; aplicação de pagamento e biblioteca continuam no incremento seguinte.
 
 O repositório participa de transação do chamador. Escrita com versão obsoleta
 falha; chamador precisa usar contexto/transação válidos para uma nova tentativa.
 Readiness consulta também o schema de Orders. Fora de Development, eventos EF
 que carregam exceção/stack são suprimidos; falhas têm descrição fixa no health.
 Não habilitar logging de dados sensíveis em produção.
+
+
+## Aceite de compra e publicação
+
+`POST /api/v1/me/library` aceita somente `{ "gameId": "UUID" }`; preço e UserId no
+body são recusados. O titular vem do JWT. Game ativo e preço são lidos pelo servidor
+antes do commit: uma edição/desativação posterior à leitura pode ocorrer antes da
+resposta, preservando o snapshot selecionado. Promoções serão conectadas em CAT06.
+
+202 retorna `orderId,gameId,price,status:"Pending"` e Location
+`/api/v1/me/orders/{id}`. Pedido/evento ficam no mesmo commit; 202 não representa
+pagamento aprovado ou aquisição. As consultas dessa Location serão implementadas
+em CAT07. Se a resposta se perder, consultar os próprios pedidos antes de tentar
+outra compra: não há chave de idempotência de POST.
+
+Jogo inexistente/inativo produz404 antes de duplicidade. Pending do mesmo par
+produz409 `order_already_pending` com `orderId`, `location` e header Location.
+Approved produz409 `game_already_acquired`. Rejected permite nova tentativa com
+outro ID e preço corrente. Swagger documenta as duas formas de409 e o header202.
+
+O commit usa lock transacional por usuário/jogo e índice único parcial. Colisão
+do índice exato reabre scope/contexto/outbox e lê estado confirmado para classificar
+o vencedor; não transforma Approved em Pending. Retries internos preservam o
+snapshot/ID selecionados. Três colisões sem estabilizar retornam503
+`order_placement_unavailable`, Retry-After1, sem inventar estado existente.
+
+MassTransit8.5.11 bus outbox grava `OrderPlacedEvent` canônico com pedido, usando
+MessageId e CorrelationId iguais ao OrderId. O entregador separado publica depois;
+broker indisponível deixa intenção recuperável, sem exigir outro POST. Payload tem
+OrderId/UserId/GameId/Price/PlacedAtUtc, BRL exato e UTC de seis casas. A topologia
+durável de Payments deve estar provisionada antes da publicação. Não habilitar
+topologia transitória só para esconder ausência de consumidor.
+
+As provas separam stage/rollback de entrega real: testes de atomicidade retiram
+somente o entregador bus outbox; testes HTTP/RabbitMQ mantêm o serviço real. Logs
+OrderPlaced contêm somente titular, jogo, pedido e trace, sem body/JWT/credenciais.
+O schema/outbox da aplicação não prova, sozinho, fluxo completo de pagamento,
+biblioteca, Compose ou Kubernetes.

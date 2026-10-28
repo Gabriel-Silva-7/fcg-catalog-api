@@ -8,6 +8,7 @@
     <ProjectReference Include="../../src/FCG.Catalog.Api/FCG.Catalog.Api.csproj" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.RabbitMq" />
     <PackageReference Include="SSH.NET" />
   </ItemGroup>
 </Project>

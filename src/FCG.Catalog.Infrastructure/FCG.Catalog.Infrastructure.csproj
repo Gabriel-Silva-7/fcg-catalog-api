@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="MassTransit.RabbitMQ" />
+    <PackageReference Include="MassTransit.EntityFrameworkCore" />
+    <PackageReference Include="RabbitMQ.Client" />
     <ProjectReference Include="../FCG.Catalog.Application/FCG.Catalog.Application.csproj" />
     <ProjectReference Include="../FCG.Catalog.Domain/FCG.Catalog.Domain.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />

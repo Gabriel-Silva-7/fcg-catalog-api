@@ -1,6 +1,7 @@
 using FCG.Catalog.Domain.Catalog;
 using FCG.Catalog.Domain.Orders;
 using Microsoft.EntityFrameworkCore;
+using MassTransit;
 
 namespace FCG.Catalog.Infrastructure.Persistence;
 
@@ -10,6 +11,9 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
     public DbSet<Game> Games => Set<Game>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.AddInboxStateEntity();
+        modelBuilder.AddOutboxMessageEntity();
+        modelBuilder.AddOutboxStateEntity();
         var order = modelBuilder.Entity<Order>();
         order.ToTable("Orders", table =>
         {
