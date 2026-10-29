@@ -42,6 +42,9 @@ builder.Services.AddCatalogMessaging(builder.Configuration);
 if (!builder.Environment.IsDevelopment())
 {
     builder.Logging.AddFilter("MassTransit", LogLevel.None);
+    // Request URLs can contain private search terms; explicit controller audit events omit payload/query.
+    builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.None);
+    builder.Services.AddHostedService<FCG.Catalog.Api.Diagnostics.RequestTraceLifetime>();
     // Framework token failures attach exception details; the authentication event logs bounded metadata instead.
     builder.Logging.AddFilter("Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerHandler", LogLevel.None);
 }

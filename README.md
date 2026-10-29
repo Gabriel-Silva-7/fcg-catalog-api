@@ -305,3 +305,7 @@ promoção expire ou o jogo seja alterado/desativado antes do commit ou pagament
 A migração Promotions deve ser aplicada antes da readiness; desativação mantém
 promoções e histórico. Não existe edição de promoção ou GET individual de promoção
 nesse contrato herdado.
+
+Em Production, o logger padrão de requisições do host é desativado porque registra
+a URL com a query completa. Os eventos explícitos da aplicação preservam metadados
+de auditoria sem conteúdo de busca/contato. Development mantém diagnóstico local.

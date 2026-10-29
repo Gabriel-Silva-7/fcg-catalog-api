@@ -93,13 +93,18 @@ public sealed class CatalogStorageTests(CatalogPostgres postgres) : IClassFixtur
     {
         await using var app = await CatalogTestApplication.StartAsync(postgres);
         var token = app.Token(); app.Authorize(token);
+        const string traceId = "0123456789abcdef0123456789abcdef";
+        app.Client.DefaultRequestHeaders.Add("traceparent", "00-" + traceId + "-0123456789abcdef-01");
         using var response = await app.Client.PostAsJsonAsync("/api/v1/games", new { title = "TITLE-THAT-MUST-NOT-BE-LOGGED", description = "DESCRIPTION-THAT-MUST-NOT-BE-LOGGED", basePrice = 1m });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var id = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         var audit = Assert.Single(app.Logs.Entries, line => line.Contains("GameCreated", StringComparison.Ordinal));
         Assert.Contains(app.AdministratorId.ToString(), audit);
         Assert.Contains(id.ToString(), audit);
+        Assert.Contains(traceId, audit);
         Assert.Matches(@"00-[a-f0-9]{32}-[a-f0-9]{16}-[a-f0-9]{2}", audit);
+        using var search = await app.Client.GetAsync("/api/v1/games?search=" + Uri.EscapeDataString("TITLE-THAT-MUST-NOT-BE-LOGGED"));
+        Assert.Equal(HttpStatusCode.OK, search.StatusCode);
         var logs = string.Join("\n", app.Logs.Entries);
         Assert.DoesNotContain(token, logs);
         Assert.DoesNotContain("TITLE-THAT-MUST-NOT-BE-LOGGED", logs);
