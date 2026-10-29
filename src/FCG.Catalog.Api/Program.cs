@@ -17,6 +17,13 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi;
 
+if (args.FirstOrDefault() == "recover-payments")
+    return await FCG.Catalog.Api.Operations.PaymentRecoveryCommand.RunAsync(args[1..]);
+if (args.Length > 0 && !args[0].StartsWith('-'))
+{
+    Console.Error.WriteLine("Usage: recover-payments list | show --id GUID | replay --id GUID [--dry-run | --apply]");
+    return 2;
+}
 if (args is ["--healthcheck"])
     return await ContainerProbe.RunAsync(new Uri("http://127.0.0.1:8080/health/ready"));
 

@@ -39,11 +39,8 @@ public sealed class PaymentApplication(CatalogDbContext db, TimeProvider clock, 
         else if (conflict.Resolved) result = new(PaymentApplicationOutcome.AlreadyResolved);
         else
         {
-            PaymentProcessedEvent? incoming = null;
-            try { incoming = JsonSerializer.Deserialize<PaymentProcessedEvent>(conflict.Payload); }
-            catch (Exception error) when (error is JsonException or ArgumentException or NotSupportedException) { }
-            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(conflict.Payload)));
-            if (incoming is null || incoming.OrderId != conflict.BusinessId || hash != conflict.PayloadHash)
+            var incoming = ReadStoredPayment(conflict);
+            if (incoming is null)
                 result = new(PaymentApplicationOutcome.Quarantined, "InvalidStoredPayload");
             else
             {
@@ -59,7 +56,32 @@ public sealed class PaymentApplication(CatalogDbContext db, TimeProvider clock, 
         return result;
     }
 
-    private async Task<PaymentApplicationResult> ApplyCoreAsync(PaymentProcessedEvent incoming, CancellationToken cancellationToken)
+    // A point-in-time preview: no locks, counters, resolution, attempts or domain mutations.
+    public async Task<PaymentApplicationResult> PreviewReplayAsync(Guid conflictId, CancellationToken cancellationToken)
+    {
+        RequireOwnTransaction(); db.ChangeTracker.Clear();
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
+        await db.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY", cancellationToken);
+        var conflict = await db.MessageConflicts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == conflictId, cancellationToken);
+        if (conflict is null) return new(PaymentApplicationOutcome.NotFound);
+        if (conflict.Kind != "Payment" || conflict.MessageType != nameof(PaymentProcessedEvent))
+            return new(PaymentApplicationOutcome.Quarantined, "UnsupportedMessageType");
+        if (conflict.Resolved) return new(PaymentApplicationOutcome.AlreadyResolved);
+        var incoming = ReadStoredPayment(conflict);
+        return incoming is null ? new(PaymentApplicationOutcome.Quarantined, "InvalidStoredPayload")
+            : await ApplyCoreAsync(incoming, cancellationToken, apply: false);
+    }
+
+    private static PaymentProcessedEvent? ReadStoredPayment(MessageConflict conflict)
+    {
+        PaymentProcessedEvent? incoming;
+        try { incoming = JsonSerializer.Deserialize<PaymentProcessedEvent>(conflict.Payload); }
+        catch (Exception error) when (error is JsonException or ArgumentException or NotSupportedException) { return null; }
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(conflict.Payload)));
+        return incoming is not null && incoming.OrderId == conflict.BusinessId && hash == conflict.PayloadHash ? incoming : null;
+    }
+
+    private async Task<PaymentApplicationResult> ApplyCoreAsync(PaymentProcessedEvent incoming, CancellationToken cancellationToken, bool apply = true)
     {
         var order = await db.Orders.SingleOrDefaultAsync(x => x.Id == incoming.OrderId, cancellationToken);
         var decision = PaymentApplicationPolicy.Decide(order, incoming);
@@ -82,6 +104,7 @@ public sealed class PaymentApplication(CatalogDbContext db, TimeProvider clock, 
             if (await db.LibraryEntries.AsNoTracking().AnyAsync(x => x.UserId == order!.UserId && x.GameId == order.GameId, cancellationToken))
                 return new(PaymentApplicationOutcome.Quarantined, "ExistingAcquisitionConflict");
         }
+        if (!apply) return decision;
         order!.Complete(decision.Outcome == PaymentApplicationOutcome.Approved ? OrderStatus.Approved : OrderStatus.Rejected, incoming.Reason, incoming.ProcessedAtUtc);
         if (decision.Outcome == PaymentApplicationOutcome.Approved) db.LibraryEntries.Add(LibraryEntry.FromApprovedOrder(order));
         return decision;

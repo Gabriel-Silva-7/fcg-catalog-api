@@ -309,3 +309,32 @@ nesse contrato herdado.
 Em Production, o logger padrão de requisições do host é desativado porque registra
 a URL com a query completa. Os eventos explícitos da aplicação preservam metadados
 de auditoria sem conteúdo de busca/contato. Development mantém diagnóstico local.
+
+## Operação local de conflitos de pagamento
+
+O processo da imagem também aceita comandos locais, sem iniciar HTTP, bus, migrations,
+bootstrap ou carregar chaves JWT. Requer apenas `ConnectionStrings__Default` do
+próprio Catalog. Aplique o schema antes, pelo procedimento normal do ambiente.
+
+```sh
+dotnet FCG.Catalog.Api.dll recover-payments list --limit 20
+dotnet FCG.Catalog.Api.dll recover-payments show --id <conflict-guid>
+dotnet FCG.Catalog.Api.dll recover-payments replay --id <conflict-guid> --dry-run
+dotnet FCG.Catalog.Api.dll recover-payments replay --id <conflict-guid> --apply
+```
+
+A prévia é o padrão quando `--apply` não é informado. Usa snapshot read-only e não
+altera pedido, aquisição, diagnóstico, contadores ou histórico. É uma previsão do
+estado observado, que pode mudar antes da aplicação. A aplicação real reutiliza a
+regra transacional de replay: efeito, resolução e tentativa confirmam juntos. Não
+cria pedido ausente, escolhe outro terminal, altera preço ou edita payload/hash.
+Repetições e operadores concorrentes não duplicam aquisição.
+
+List/show exibem somente metadados de diagnóstico, sem payload/contato. Um conflito
+de identidade contém somente estado mínimo e não pode ser reaplicado como pagamento;
+a recuperação desse estado usa snapshots emitidos por Users. `_error` é transporte
+e tem redrive separado, sem substituir o replay local de um conflito já confirmado.
+
+Códigos de saída:0 sucesso ou já resolvido;1 falha segura de configuração/banco;
+2 argumentos inválidos;3 registro inexistente;4 pendência ou conflito preservado.
+Não use credenciais em argumentos nem publique a saída operacional sem revisar IDs.
