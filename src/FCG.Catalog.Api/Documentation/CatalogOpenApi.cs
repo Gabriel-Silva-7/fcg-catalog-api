@@ -20,7 +20,7 @@ public sealed class CatalogPriceSchemaFilter : ISchemaFilter
 {
     public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
     {
-        if (context.Type != typeof(CreateGameRequest) || schema.Properties is null
+        if ((context.Type != typeof(CreateGameRequest) && context.Type != typeof(UpdateGameRequest)) || schema.Properties is null
             || !schema.Properties.TryGetValue("basePrice", out var price) || price is not OpenApiSchema mutablePrice) return;
         mutablePrice.Type = JsonSchemaType.Number;
         mutablePrice.Minimum = "0";

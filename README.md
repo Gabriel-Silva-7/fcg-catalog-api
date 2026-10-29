@@ -264,3 +264,20 @@ um estado local ativo pode autorizar até receber a mudança ou o token expirar.
 Uma requisição já autorizada não é cancelada retroativamente. Pedidos já aceitos
 continuam sendo finalizados com seu snapshot, mesmo após bloqueio da conta.
 A migração AuthorizationProjection é necessária antes de liberar readiness.
+
+## Edição e desativação de jogos
+
+`PUT /api/v1/games/{id}` exige administrador e aceita título, descrição opcional
+e preço-base, com os mesmos limites de criação. Retorna200 com o jogo atualizado;
+inexistente ou inativo retorna404. Mantém ID, autor e data de criação. O preço
+atualizado não altera preço de pedido ou aquisição anterior.
+
+`DELETE /api/v1/games/{id}` desativa logicamente e retorna204, inclusive se já
+inativo. Inexistente retorna404. O registro permanece para preservar pedidos e
+bibliotecas; lista/detalhe públicos deixam de exibi-lo e novas compras retornam404.
+Pedidos aceitos antes da leitura da desativação continuam até o resultado.
+
+As duas operações serializam pelo registro no PostgreSQL e confirmam a transação
+antes do sucesso. Se DELETE vence a edição concorrente, PUT observa inativo e
+retorna404; se PUT vence, DELETE pode desativar o conteúdo editado. Não há reativação
+por PUT, token de versão exigido ou garantia de cancelamento retroativo de compra.

@@ -16,6 +16,7 @@ public sealed class GamesController(
     CreateGameHandler createGameHandler,
     ListGamesHandler listGamesHandler,
     GetGameHandler getGameHandler,
+    GameAdministrationHandler administration,
     ILogger<GamesController> logger) : ControllerBase
 {
     public const string GetByIdRouteName = "GetGameById";
@@ -105,6 +106,37 @@ public sealed class GamesController(
             TraceIdentity.Resolve(HttpContext));
 
         return CreatedAtRoute(GetByIdRouteName, new { id = game.Id }, response);
+    }
+
+    /// <summary>Updates an active game as an administrator.</summary>
+    [HttpPut("{id:guid}")]
+    [Authorize(Policy = IdentityAuthorizationPolicy.AdminOnly)]
+    [ProducesResponseType<GameResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Update(Guid id, UpdateGameRequest request, CancellationToken cancellationToken)
+    {
+        var game = await administration.UpdateAsync(new(id, request.Title, request.Description, request.BasePrice!.Value), cancellationToken);
+        if (game is null) return NotFound(ApiErrors.ResourceNotFound.ToProblemDetails(Request.Path));
+        logger.LogInformation("GameUpdated {ActorUserId} {TargetGameId} {TraceId}", User.FindFirstValue("sub"), id, TraceIdentity.Resolve(HttpContext));
+        return Ok(ToResponse(game));
+    }
+
+    /// <summary>Deactivates a game without removing purchase history.</summary>
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = IdentityAuthorizationPolicy.AdminOnly)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        if (!await administration.DeactivateAsync(id, cancellationToken))
+            return NotFound(ApiErrors.ResourceNotFound.ToProblemDetails(Request.Path));
+        logger.LogInformation("GameDeactivated {ActorUserId} {TargetGameId} {TraceId}", User.FindFirstValue("sub"), id, TraceIdentity.Resolve(HttpContext));
+        return NoContent();
     }
 
     private static GameResponse ToResponse(CatalogGameSummary game) =>

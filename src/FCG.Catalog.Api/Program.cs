@@ -47,6 +47,8 @@ if (!builder.Environment.IsDevelopment())
 }
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<CreateGameHandler>();
+builder.Services.AddScoped<IGameAdministration, GameAdministration>();
+builder.Services.AddScoped<GameAdministrationHandler>();
 builder.Services.AddScoped<ListGamesHandler>();
 builder.Services.AddScoped<GetGameHandler>();
 builder.Services.AddCatalogAuthentication(builder.Configuration);

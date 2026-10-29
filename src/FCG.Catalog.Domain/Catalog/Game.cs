@@ -47,6 +47,34 @@ public sealed class Game
         Guid createdByUserId,
         DateTime createdAtUtc)
     {
+        var (normalizedTitle, normalizedDescription) = NormalizeDetails(title, description, basePrice);
+
+        if (createdByUserId == Guid.Empty)
+        {
+            throw new ArgumentException("Creator identifier cannot be empty.", nameof(createdByUserId));
+        }
+
+        DomainGuard.EnsureUtc(createdAtUtc, nameof(createdAtUtc));
+
+        return new Game(
+            Guid.NewGuid(),
+            normalizedTitle,
+            normalizedDescription,
+            basePrice,
+            true,
+            createdAtUtc,
+            createdByUserId);
+    }
+
+    public void Update(string title, string? description, decimal basePrice)
+    {
+        if (!IsActive) throw new InvalidOperationException("An inactive game cannot be updated.");
+        var (normalizedTitle, normalizedDescription) = NormalizeDetails(title, description, basePrice);
+        Title = normalizedTitle; Description = normalizedDescription; BasePrice = basePrice;
+    }
+
+    private static (string Title, string? Description) NormalizeDetails(string title, string? description, decimal basePrice)
+    {
         ArgumentNullException.ThrowIfNull(title);
 
         var normalizedTitle = title.Trim();
@@ -84,21 +112,7 @@ public sealed class Game
                 nameof(basePrice));
         }
 
-        if (createdByUserId == Guid.Empty)
-        {
-            throw new ArgumentException("Creator identifier cannot be empty.", nameof(createdByUserId));
-        }
-
-        DomainGuard.EnsureUtc(createdAtUtc, nameof(createdAtUtc));
-
-        return new Game(
-            Guid.NewGuid(),
-            normalizedTitle,
-            normalizedDescription,
-            basePrice,
-            true,
-            createdAtUtc,
-            createdByUserId);
+        return (normalizedTitle, normalizedDescription);
     }
 
     public void Deactivate() => IsActive = false;
