@@ -39,7 +39,12 @@ builder.Services.AddScoped<GetMyLibraryHandler>();
 builder.Services.AddScoped<IPendingOrderCommitter, PendingOrderCommitter>();
 builder.Services.AddScoped<PlaceOrderHandler>();
 builder.Services.AddCatalogMessaging(builder.Configuration);
-if (!builder.Environment.IsDevelopment()) builder.Logging.AddFilter("MassTransit", LogLevel.None);
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Logging.AddFilter("MassTransit", LogLevel.None);
+    // Framework token failures attach exception details; the authentication event logs bounded metadata instead.
+    builder.Logging.AddFilter("Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerHandler", LogLevel.None);
+}
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<CreateGameHandler>();
 builder.Services.AddScoped<ListGamesHandler>();
@@ -67,6 +72,7 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 }
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 if (builder.Configuration.GetValue<bool>("Swagger:Enabled"))

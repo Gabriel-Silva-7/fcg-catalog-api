@@ -149,6 +149,38 @@ namespace FCG.Catalog.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FCG.Catalog.Infrastructure.Identity.UserAuthorizationState", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("EventVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserAuthorizationStates", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_UserAuthorizationStates_Identity", "\"UserId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_UserAuthorizationStates_Role", "\"Role\" IN ('User', 'Administrator')");
+
+                            t.HasCheckConstraint("CK_UserAuthorizationStates_State", "\"State\" IN ('Active', 'Blocked', 'Deleted')");
+
+                            t.HasCheckConstraint("CK_UserAuthorizationStates_Version", "\"EventVersion\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("FCG.Catalog.Infrastructure.Persistence.MessageConflict", b =>
                 {
                     b.Property<Guid>("Id")

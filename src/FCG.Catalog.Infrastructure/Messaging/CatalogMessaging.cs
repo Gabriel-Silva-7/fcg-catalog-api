@@ -1,3 +1,5 @@
+using FCG.Catalog.Application.Identity;
+using FCG.Catalog.Infrastructure.Identity;
 using FCG.Catalog.Application.Orders;
 using FCG.Catalog.Infrastructure.Persistence;
 using FCG.Catalog.Infrastructure.Orders;
@@ -16,6 +18,11 @@ public static class CatalogMessaging
         var queue = configuration["Queues:Payments"] ?? "fcg-catalog-payments";
         if (string.IsNullOrWhiteSpace(queue) || queue.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_' or '.')))
             throw new InvalidOperationException("Queues:Payments requires a valid durable endpoint name.");
+        var identityQueue = configuration["Queues:Identity"] ?? "fcg-catalog-identity";
+        if (string.IsNullOrWhiteSpace(identityQueue) || identityQueue == queue || identityQueue.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_' or '.')))
+            throw new InvalidOperationException("Queues:Identity requires a valid distinct durable endpoint name.");
+        services.AddScoped<IAuthorizationStateReader, AuthorizationStateReader>();
+        services.AddScoped<IdentityProjection>();
         services.AddSingleton(settings);
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddScoped<PaymentApplication>();
@@ -23,6 +30,7 @@ public static class CatalogMessaging
         services.AddMassTransit(bus =>
         {
             bus.AddConsumer<PaymentProcessedConsumer>();
+            bus.AddConsumer<IdentityProjectionConsumer>();
             bus.ConfigureHealthCheckOptions(options => { options.Tags.Clear(); options.Tags.Add("diagnostic"); });
             bus.AddEntityFrameworkOutbox<CatalogDbContext>(outbox =>
             {
@@ -38,7 +46,19 @@ public static class CatalogMessaging
                 {
                     options.Converters.Insert(0, new PurchaseEventJsonConverter<OrderPlacedEvent>());
                     options.Converters.Insert(0, new PurchaseEventJsonConverter<PaymentProcessedEvent>());
+                    options.Converters.Insert(0, new IdentityEventJsonConverter<UserCreatedEvent>());
+                    options.Converters.Insert(0, new IdentityEventJsonConverter<UserStateChangedEvent>());
+                    options.Converters.Insert(0, new IdentityEventJsonConverter<UserStateSnapshotEvent>());
                     return options;
+                });
+                rabbit.ReceiveEndpoint(identityQueue, endpoint =>
+                {
+                    endpoint.UseMessageRetry(retry =>
+                    {
+                        retry.Intervals(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+                        retry.Ignore<ArgumentException>();
+                    });
+                    endpoint.ConfigureConsumer<IdentityProjectionConsumer>(context);
                 });
                 rabbit.ReceiveEndpoint(queue, endpoint =>
                 {

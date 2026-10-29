@@ -233,3 +233,34 @@ para jogo posteriormente inativo e preço alterado. Title vem do registro atual;
 AcquisitionPrice/AcquiredAt são históricos. UserId, versão, OriginOrderId, payloads
 de diagnóstico e credenciais não fazem parte dessas respostas. Swagger descreve
 rotas, paginação, schemas e autorização Bearer.
+
+## Estado distribuído de autorização
+
+As rotas protegidas validam assinatura RS256, emissor, audiência, claims e a janela
+`nbf <= agora < exp`, com tolerância zero. Depois consultam a projeção local de
+Users em cada requisição. Estado ausente ou banco indisponível devolve503
+`auth_state_unavailable`, com `Retry-After: 1`; bloqueado/excluído devolve401.
+Uma escrita administrativa exige Administrator tanto no token quanto na projeção
+atual; rebaixamento resulta403, sem elevar um token User de uma conta promovida.
+Rotas públicas, health e Swagger não consultam essa projeção por causa de um Bearer.
+
+`Queues:Identity` (padrão `fcg-catalog-identity`) recebe os contratos canônicos
+UserCreatedEvent, UserStateChangedEvent e UserStateSnapshotEvent. Deve ser distinta
+da fila de pagamentos. A tabela UserAuthorizationStates guarda somente UserId,
+EventVersion, Role e State, sem contato ou referência ao banco de Users. Uma
+transação serializa versões por usuário; versão inferior é ignorada, mesma versão
+com papel/estado equivalente é idempotente. Diferença apenas de contato não é
+conflito no Catalog. Exclusão é terminal mesmo contra uma versão maior ativa.
+
+Conflitos preservam a projeção e gravam diagnóstico antes do ack, com payload
+mínimo de autorização e metadados, sem Name/Email. Falha desse commit causa retry;
+as tentativas são1s/5s/15s, depois `_error`. Não interpretar o payload mínimo como
+um evento completo para republicação: recuperação de identidade deve solicitar
+snapshots canônicos ao processo de reconciliação do Users. A recuperação de
+pagamentos continua separada e usa seus contratos completos.
+
+A convergência depende de entrega do evento: enquanto o broker estiver indisponível,
+um estado local ativo pode autorizar até receber a mudança ou o token expirar.
+Uma requisição já autorizada não é cancelada retroativamente. Pedidos já aceitos
+continuam sendo finalizados com seu snapshot, mesmo após bloqueio da conta.
+A migração AuthorizationProjection é necessária antes de liberar readiness.

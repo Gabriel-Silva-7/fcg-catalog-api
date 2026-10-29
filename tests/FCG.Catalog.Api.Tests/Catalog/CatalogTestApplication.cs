@@ -49,6 +49,7 @@ public sealed class CatalogTestApplication : WebApplicationFactory<Program>, IAs
     public string ConnectionString { get; }
     public HttpClient Client { get; private set; } = null!;
     public string PaymentsQueue { get; } = "catalog-payments-" + Guid.NewGuid().ToString("N");
+    public string IdentityQueue { get; } = "catalog-identity-" + Guid.NewGuid().ToString("N");
     public Guid AdministratorId { get; } = Guid.NewGuid();
     private CatalogTestApplication(CatalogPostgres postgres, Action<IWebHostBuilder>? customize)
     {
@@ -84,7 +85,7 @@ public sealed class CatalogTestApplication : WebApplicationFactory<Program>, IAs
             ["ConnectionStrings:Default"] = ConnectionString,
             ["Jwt:Issuer"] = "fcg-fixture", ["Jwt:Audience"] = "fcg-catalog-fixture",
             ["Jwt:PublicKeyPath"] = Path.Combine(directory, "public.pem"),
-            ["Database:MigrateOnStartup"] = "true", ["Swagger:Enabled"] = "true", ["Queues:Payments"] = PaymentsQueue
+            ["Database:MigrateOnStartup"] = "true", ["Swagger:Enabled"] = "true", ["Queues:Payments"] = PaymentsQueue, ["Queues:Identity"] = IdentityQueue
         }) builder.UseSetting(name, value);
         foreach (var pair in postgres.BrokerSettings) builder.UseSetting(pair.Key, pair.Value);
         builder.ConfigureTestServices(services => services.Configure<MassTransitHostOptions>(options => options.WaitUntilStarted = true));
@@ -93,13 +94,23 @@ public sealed class CatalogTestApplication : WebApplicationFactory<Program>, IAs
     public string Token(string role = "Administrator", string? subject = null, string? jwtId = null,
         string issuer = "fcg-fixture", string audience = "fcg-catalog-fixture", int expirySeconds = 900,
         bool wrongKey = false, string algorithm = "RS256", bool omitSubject = false, bool omitJwtId = false,
-        int notBeforeSeconds = -120, bool duplicateSubject = false)
+        int notBeforeSeconds = -120, bool duplicateSubject = false, bool seedProjection = true, bool omitNotBefore = false)
     {
+        // Explicit fixture state represents a converged identity. Never overwrite later block/demotion/deletion.
+        if (seedProjection && !omitSubject && Guid.TryParse(subject ?? AdministratorId.ToString(), out var owner) && owner != Guid.Empty
+            && role is "User" or "Administrator")
+        {
+            using var connection = new NpgsqlConnection(ConnectionString); connection.Open();
+            using var command = new NpgsqlCommand("INSERT INTO \"UserAuthorizationStates\" (\"UserId\",\"EventVersion\",\"Role\",\"State\") VALUES (@id,1,@role,'Active') ON CONFLICT (\"UserId\") DO NOTHING", connection);
+            command.Parameters.AddWithValue("id", owner); command.Parameters.AddWithValue("role", owner == AdministratorId ? "Administrator" : role);
+            command.ExecuteNonQuery();
+        }
         var payload = new Dictionary<string, object> {
             ["iss"] = issuer, ["aud"] = audience, ["role"] = role,
             ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             ["nbf"] = DateTimeOffset.UtcNow.AddSeconds(notBeforeSeconds).ToUnixTimeSeconds(),
             ["exp"] = DateTimeOffset.UtcNow.AddSeconds(expirySeconds).ToUnixTimeSeconds() };
+        if (omitNotBefore) payload.Remove("nbf");
         if (!omitSubject) payload["sub"] = subject ?? AdministratorId.ToString();
         if (!omitJwtId) payload["jti"] = jwtId ?? Guid.NewGuid().ToString();
         var json = JsonSerializer.Serialize(payload);

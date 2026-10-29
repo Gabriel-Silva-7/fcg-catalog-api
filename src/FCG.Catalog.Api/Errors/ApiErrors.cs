@@ -11,8 +11,9 @@ public static class ApiErrors
     public static readonly ApiError ResourceNotFound = new("resource_not_found", 404, "Resource not found");
     public static readonly ApiError GameAlreadyAcquired = new("game_already_acquired", 409, "Game already acquired");
     public static readonly ApiError OrderPlacementUnavailable = new("order_placement_unavailable", 503, "Order placement temporarily unavailable");
+    public static readonly ApiError AuthStateUnavailable = new("auth_state_unavailable", 503, "Authentication state unavailable");
     public static readonly ApiError InternalError = new("internal_error", 500, "Unexpected error");
-    public static IReadOnlyCollection<ApiError> All { get; } = [ValidationError, Unauthenticated, Forbidden, ResourceNotFound, GameAlreadyAcquired, OrderPlacementUnavailable, InternalError];
+    public static IReadOnlyCollection<ApiError> All { get; } = [ValidationError, Unauthenticated, Forbidden, ResourceNotFound, GameAlreadyAcquired, OrderPlacementUnavailable, AuthStateUnavailable, InternalError];
     public static bool TryGetByCode(string? code, [NotNullWhen(true)] out ApiError? error)
     {
         error = All.FirstOrDefault(error => error.Code == code);

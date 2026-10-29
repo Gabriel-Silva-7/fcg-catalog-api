@@ -1,3 +1,4 @@
+using FCG.Catalog.Infrastructure.Identity;
 using FCG.Catalog.Domain.Catalog;
 using FCG.Catalog.Domain.Orders;
 using FCG.Catalog.Domain.Library;
@@ -8,6 +9,7 @@ namespace FCG.Catalog.Infrastructure.Persistence;
 
 public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options) : DbContext(options)
 {
+    public DbSet<UserAuthorizationState> UserAuthorizationStates => Set<UserAuthorizationState>();
     public DbSet<LibraryEntry> LibraryEntries => Set<LibraryEntry>();
     public DbSet<MessageConflict> MessageConflicts => Set<MessageConflict>();
     public DbSet<PaymentRecoveryAttempt> PaymentRecoveryAttempts => Set<PaymentRecoveryAttempt>();
@@ -15,6 +17,18 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
     public DbSet<Game> Games => Set<Game>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        var identity = modelBuilder.Entity<UserAuthorizationState>();
+        identity.ToTable("UserAuthorizationStates", table =>
+        {
+            table.HasCheckConstraint("CK_UserAuthorizationStates_Identity", "\"UserId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+            table.HasCheckConstraint("CK_UserAuthorizationStates_Version", "\"EventVersion\" > 0");
+            table.HasCheckConstraint("CK_UserAuthorizationStates_Role", "\"Role\" IN ('User', 'Administrator')");
+            table.HasCheckConstraint("CK_UserAuthorizationStates_State", "\"State\" IN ('Active', 'Blocked', 'Deleted')");
+        });
+        identity.HasKey(x => x.UserId);
+        identity.Property(x => x.UserId).ValueGeneratedNever();
+        identity.Property(x => x.Role).HasConversion<string>().HasMaxLength(20);
+        identity.Property(x => x.State).HasConversion<string>().HasMaxLength(20);
         modelBuilder.AddInboxStateEntity();
         modelBuilder.AddOutboxMessageEntity();
         modelBuilder.AddOutboxStateEntity();
