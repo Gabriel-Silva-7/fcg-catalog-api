@@ -338,3 +338,5 @@ e tem redrive separado, sem substituir o replay local de um conflito já confirm
 Códigos de saída:0 sucesso ou já resolvido;1 falha segura de configuração/banco;
 2 argumentos inválidos;3 registro inexistente;4 pendência ou conflito preservado.
 Não use credenciais em argumentos nem publique a saída operacional sem revisar IDs.
+
+[Manifestos Kubernetes próprios](k8s/README.md) para renderização e implantação pela orquestração.
