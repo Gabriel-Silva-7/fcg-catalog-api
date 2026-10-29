@@ -9,12 +9,15 @@ Catálogo de jogos em .NET 10, com PostgreSQL próprio e autenticação JWT RS25
 | `POST /api/v1/games` | Bearer com papel `Administrator` | 201, jogo criado e Location para o detalhe |
 | `GET /api/v1/games` | Público | Lista paginada dos jogos ativos |
 | `GET /api/v1/games/{id}` | Público | Jogo ativo ou 404 |
+| `PUT /api/v1/games/{id}` | Administrator no JWT e na projeção | 200, edição de jogo ativo |
+| `DELETE /api/v1/games/{id}` | Administrator no JWT e na projeção | 204, desativação lógica idempotente |
+| `POST /api/v1/games/{gameId}/promotions` | Administrator no JWT e na projeção | 201, promoção criada |
 | `POST /api/v1/me/library` | Bearer User ou Administrator |202 após pedido + evento duráveis; não concede jogo |
 | `GET /api/v1/me/orders` | Bearer User ou Administrator |Pedidos próprios paginados |
 | `GET /api/v1/me/orders/{id}` | Bearer User ou Administrator |Pedido próprio ou404 opaco |
 | `GET /api/v1/me/library` | Bearer User ou Administrator |Biblioteca própria paginada, incluindo histórico inativo |
 
-Criação: `{ "title": "Celeste", "description": "Platformer", "basePrice": 59.90 }`. Título tem 1–200 caracteres após trim; descrição é opcional e limitada a 2.000. Preço obrigatório entre 0 e 9999999999999999.99, com centavos exatos. Títulos repetidos são permitidos. Retorno: `id`, `title`, `description`, `basePrice`, `currentPrice`, `discountPercentage`, `isActive`. Neste incremento currentPrice=basePrice e desconto=0; promoções e alteração/exclusão de jogos ainda não estão expostas.
+Criação: `{ "title": "Celeste", "description": "Platformer", "basePrice": 59.90 }`. Título tem 1–200 caracteres após trim; descrição é opcional e limitada a 2.000. Preço obrigatório entre 0 e 9999999999999999.99, com centavos exatos. Títulos repetidos são permitidos. Retorno: `id`, `title`, `description`, `basePrice`, `currentPrice`, `discountPercentage`, `isActive`. `currentPrice` e `discountPercentage` consideram a maior promoção ativa; sem promoção, são iguais a basePrice e zero. Edição, desativação e promoções estão descritas abaixo.
 
 Lista: `page=1`, `pageSize=20`, `search` opcional, `sortBy=title|basePrice|createdAt`. Page vai de 1 a 1.000.000; pageSize de 1 a 100. Pesquisa ignora caixa e espaços externos; `%`, `_` e `\` são texto literal. A ordenação inclui desempate por identificador. Inativos ficam fora da lista e retornam 404 no detalhe. Leituras continuam públicas quando o cliente envia Bearer inválido.
 
@@ -27,10 +30,12 @@ Requer SDK 10.0.400, fixado em global.json, PostgreSQL16, RabbitMQ e uma chave p
 | Variável | Obrigatória / padrão | Origem esperada |
 |---|---|---|
 | `RabbitMq__Host` / `RabbitMq__Port` | Host obrigatório, porta padrão5672; sem URL com credenciais | ConfigMap |
+| `Queues__Identity` | Fila durável própria; padrão `fcg-catalog-identity`, distinta de Payments | ConfigMap |
 | `Queues__Payments` | Fila durável própria; padrão `fcg-catalog-payments` | ConfigMap |
 | `RabbitMq__VirtualHost` | `/fcg`, obrigatório | ConfigMap |
 | `RabbitMq__Username` / `RabbitMq__Password` | Credencial própria obrigatória, sem padrão; sem tag administrativa | Secret |
 | `ConnectionStrings__Default` | Obrigatória; PostgreSQL do próprio Catalog | Secret |
+| `PGGSSENCMODE` | Perfil local: `disable`; opção do Npgsql para autenticação por senha, independente de `SslMode` | Ambiente do processo |
 | `Jwt__Issuer` | Obrigatória; exemplo `fcg-users` | ConfigMap |
 | `Jwt__Audience` | Obrigatória; exemplo `fcg-api` | ConfigMap |
 | `Jwt__Algorithm` | `RS256`; outro valor é recusado | ConfigMap |
@@ -43,7 +48,7 @@ Requer SDK 10.0.400, fixado em global.json, PostgreSQL16, RabbitMQ e uma chave p
 
 Catalog recusa configuração de chave privada, PEM privado, PKCS#1 e chave fraca. Apenas Users deve guardar a privada. Assinatura, algoritmo, emissor, audiência, validade e claims únicas `sub`/`role`/`jti` são verificados; sub e jti são GUIDs não vazios, e role é User ou Administrator. JSON ambíguo com membros duplicados é recusado.
 
-**Limite atual:** a autorização usa o papel do token. A projeção local de estado da conta e sua revogação por eventos ainda serão conectadas; esta versão não comprova bloqueio distribuído. O host publica pedidos, consome resultados e mantém biblioteca própria. Pedidos e biblioteca são consultáveis pelo próprio titular. A integração ponta a ponta continua pendente.
+As rotas protegidas combinam o JWT com a projeção local de autorização recebida por eventos de Users. Estado desconhecido retorna503; bloqueado/excluído retorna401. Escritas administrativas exigem papel administrativo no token e na projeção atual. A convergência é assíncrona, conforme a seção de estado distribuído. O host publica pedidos, consome resultados e mantém biblioteca própria; pedidos e biblioteca são consultáveis pelo titular.
 
 Para executar, configure as variáveis acima no ambiente e disponibilize a chave pública. Exemplo de configuração local, sem credenciais reais no Git:
 
@@ -66,9 +71,9 @@ Com Swagger habilitado: `/swagger` e `/swagger/v1/swagger.json`. Criação reque
 
 ## Persistência e saúde
 
-As migrations criam Games, Orders, LibraryEntries, MessageConflicts, PaymentRecoveryAttempts, schema de outbox e histórico EF no banco Catalog. InboxState é dependência estrutural do modelo MassTransit; o consumidor de pagamento usa transação própria e deduplicação permanente de negócio, sem inbox finito do middleware. BasePrice é numeric(18,2), com constraint de não negativo. CreatedAtUtc usa timestamp com fuso; CreatedByUserId é UUID de auditoria sem FK externa. Aplicar novamente a migration preserva dados. Falha de configuração/migration impede iniciar; não há reset automático.
+As migrations criam Games, Promotions, Orders, LibraryEntries, UserAuthorizationStates, MessageConflicts, PaymentRecoveryAttempts, schema de outbox e histórico EF no banco Catalog. InboxState é dependência estrutural do modelo MassTransit; o consumidor de pagamento usa transação própria e deduplicação permanente de negócio, sem inbox finito do middleware. BasePrice é numeric(18,2), com constraint de não negativo. CreatedAtUtc usa timestamp com fuso; CreatedByUserId é UUID de auditoria sem FK externa. Aplicar novamente a migration preserva dados. Falha de configuração/migration impede iniciar; não há reset automático.
 
-`GET /health/live` é anônimo e independente do PostgreSQL. `GET /health/ready` consulta Games/Orders/outbox, estado do bus e uma conexão AMQP real com limite de2s; retorna200 Healthy ou503 Unhealthy. Banco fora, schema ausente ou permissões insuficientes deixam readiness indisponível. Voltar a iniciar o container do banco não é prova de prontidão; aguarde a condição HTTP de saúde.
+`GET /health/live` é anônimo e independente do PostgreSQL. `GET /health/ready` consulta jogos, promoções, pedidos, biblioteca, projeção de autorização, conflitos, histórico de recuperação e outbox, além do estado do bus e uma conexão AMQP real com limite de2s; retorna200 Healthy ou503 Unhealthy. Banco fora, schema ausente ou permissões insuficientes deixam readiness indisponível. Voltar a iniciar o container do banco não é prova de prontidão; aguarde a condição HTTP de saúde.
 
 ## Testes
 
@@ -101,7 +106,7 @@ docker --context orbstack rm -f "$container_id"
 
 O probe executa `dotnet FCG.Catalog.Api.dll --healthcheck`, consultando readiness no próprio localhost:8080. Retorna 0 para sucesso e 1 para erro/timeout, sem iniciar outro servidor e sem exigir curl/shell. A porta interna deve permanecer 8080; a porta do host pode ser aleatória.
 
-A solução preserva Domain sem frameworks, Application→Domain, Infrastructure→Application/Domain e Api→Application/Infrastructure. Manifestos Kubernetes e a jornada distribuída final pertencem aos próximos incrementos; a pasta k8s ainda documenta essa pendência.
+A solução preserva Domain sem frameworks, Application→Domain, Infrastructure→Application/Domain e Api→Application/Infrastructure. Os [manifestos Kubernetes próprios](k8s/README.md) são agregados pela orquestração, que também executa a jornada distribuída em Compose e Kind.
 
 
 ## Modelo de pedidos
@@ -116,8 +121,7 @@ A tabela própria `Orders` tem CHECKs para IDs, preço e combinação de estado,
 conclusão, motivo e versão. Índice único parcial `UX_Orders_OpenUserGame` permite
 somente um Pending ou Approved por usuário/jogo. Rejected libera nova tentativa;
 Approved ocupa o par permanentemente. UserId/GameId são identificadores do
-snapshot, sem FK remota nem leitura de Users. A aplicação de colocação deverá
-validar jogo ativo e selecionar preço do servidor antes de criar o agregado.
+snapshot, sem FK remota nem leitura de Users. A aplicação de colocação valida jogo ativo e seleciona preço do servidor antes de criar o agregado.
 A colocação HTTP e a aplicação de pagamento usam esse agregado. A biblioteca guarda a aquisição confirmada na mesma transação do resultado.
 
 O repositório participa de transação do chamador. Escrita com versão obsoleta
@@ -132,7 +136,7 @@ Não habilitar logging de dados sensíveis em produção.
 `POST /api/v1/me/library` aceita somente `{ "gameId": "UUID" }`; preço e UserId no
 body são recusados. O titular vem do JWT. Game ativo e preço são lidos pelo servidor
 antes do commit: uma edição/desativação posterior à leitura pode ocorrer antes da
-resposta, preservando o snapshot selecionado. Promoções serão conectadas em CAT06.
+resposta, preservando o snapshot selecionado. A seleção inclui a maior promoção ativa, como descrito abaixo.
 
 202 retorna `orderId,gameId,price,status:"Pending"` e Location
 `/api/v1/me/orders/{id}`. Pedido/evento ficam no mesmo commit; 202 não representa
@@ -199,7 +203,7 @@ Conflito com terminal permanece diagnosticável, sem selecionar outra decisão.
 Tipo desconhecido ou payload editado é recusado. Biblioteca ausente/incompatível
 para Order jáApproved é diagnóstico de restauração inconsistente; o replay não
 fabrica reparo silencioso. Não editar payload/hash, apagar registro ou recriar pedido
-pela ferramenta. CLI/dry-run operacional serão integrados em INT02; não existe
+pela ferramenta. A CLI operacional com dry-run está descrita abaixo; não existe
 endpoint HTTP público de recuperação.
 
 Provas com PostgreSQL real cobrem perda de conexão no commit, rollback conjunto de
@@ -340,3 +344,7 @@ Códigos de saída:0 sucesso ou já resolvido;1 falha segura de configuração/b
 Não use credenciais em argumentos nem publique a saída operacional sem revisar IDs.
 
 [Manifestos Kubernetes próprios](k8s/README.md) para renderização e implantação pela orquestração.
+
+## Ambiente integrado
+
+A [orquestração](https://github.com/Gabriel-Silva-7/fcg-orchestration) prepara fontes limpas, credenciais locais, banco e broker; seus guias descrevem Compose, Kind, jornada real e recuperação. Use as revisões selecionadas da combinação, pois o README não certifica acesso público nem integração em `main`. Este repositório contém apenas o código e os dados de sua responsabilidade.
