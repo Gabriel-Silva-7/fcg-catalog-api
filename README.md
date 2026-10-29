@@ -281,3 +281,27 @@ As duas operações serializam pelo registro no PostgreSQL e confirmam a transa�
 antes do sucesso. Se DELETE vence a edição concorrente, PUT observa inativo e
 retorna404; se PUT vence, DELETE pode desativar o conteúdo editado. Não há reativação
 por PUT, token de versão exigido ou garantia de cancelamento retroativo de compra.
+
+## Promoções e preço vigente
+
+`POST /api/v1/games/{gameId}/promotions` exige administrador e retorna201 com
+`Location` para o jogo. Corpo: `discountPercentage,startsAt,endsAt`; resposta:
+`id,gameId,discountPercentage,startsAt,endsAt,isCurrentlyActive`. Jogo inexistente
+ou inativo retorna404. Percentual deve ser maior que0 e no máximo100, com centésimos
+exatos. Datas devem ser UTC, representáveis em microssegundos, e fim maior que
+início. Entrada com fração submicrossegundo retorna400 em vez de sofrer truncamento.
+
+Sobreposições são permitidas: aplica o maior desconto ativo, início inclusivo/fim
+exclusivo, usando o relógio do servidor. Arredondamento a centavos é AwayFromZero:
+R$59,90 com25% resultaR$44,93. Lista, detalhe e resposta de edição usam a mesma regra;
+ordenação `basePrice` continua pelo preço-base. Promoções ficam no próprio banco,
+com FK apenas para Game; o criador é identificador de auditoria sem FK para Users.
+
+A leitura de jogo/disponibilidade/maior desconto usa uma instrução SQL e captura
+o instante uma vez. A lista usa snapshot read-only para contagem e itens. A criação
+de promoção serializa com edição/desativação pelo registro do Game. O preço
+calculado na aceitação permanece em pedido, evento e aquisição, mesmo que a
+promoção expire ou o jogo seja alterado/desativado antes do commit ou pagamento.
+A migração Promotions deve ser aplicada antes da readiness; desativação mantém
+promoções e histórico. Não existe edição de promoção ou GET individual de promoção
+nesse contrato herdado.

@@ -58,15 +58,15 @@ internal static class CatalogGameMapper
 {
     public static CatalogGameSummary WithPricing(GameReadModel game)
     {
-        // Promotions are introduced by CAT-06; preserve the response shape in this slice.
+        var pricing = PricingService.Calculate(game.BasePrice, game.DiscountPercentage);
 
         return new CatalogGameSummary(
             game.Id,
             game.Title,
             game.Description,
             game.BasePrice,
-            game.BasePrice,
-            0m,
+            pricing.CurrentPrice,
+            pricing.DiscountPercentage,
             game.IsActive);
     }
 }

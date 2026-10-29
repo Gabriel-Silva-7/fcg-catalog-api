@@ -61,6 +61,45 @@ namespace FCG.Catalog.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FCG.Catalog.Domain.Catalog.Promotion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("DiscountPercentage")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<DateTime>("EndsAtUtc")
+                        .HasPrecision(6)
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("GameId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartsAtUtc")
+                        .HasPrecision(6)
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("GameId", "StartsAtUtc", "EndsAtUtc");
+
+                    b.ToTable("Promotions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Promotions_Creator", "\"CreatedByUserId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_Promotions_DateRange", "\"EndsAtUtc\" > \"StartsAtUtc\"");
+
+                            t.HasCheckConstraint("CK_Promotions_DiscountPercentage_Range", "\"DiscountPercentage\" > 0 AND \"DiscountPercentage\" <= 100");
+                        });
+                });
+
             modelBuilder.Entity("FCG.Catalog.Domain.Library.LibraryEntry", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -440,6 +479,15 @@ namespace FCG.Catalog.Infrastructure.Persistence.Migrations
                     b.HasIndex("Created");
 
                     b.ToTable("OutboxState");
+                });
+
+            modelBuilder.Entity("FCG.Catalog.Domain.Catalog.Promotion", b =>
+                {
+                    b.HasOne("FCG.Catalog.Domain.Catalog.Game", null)
+                        .WithMany()
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("FCG.Catalog.Domain.Library.LibraryEntry", b =>

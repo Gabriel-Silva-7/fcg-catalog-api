@@ -14,6 +14,7 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
     public DbSet<MessageConflict> MessageConflicts => Set<MessageConflict>();
     public DbSet<PaymentRecoveryAttempt> PaymentRecoveryAttempts => Set<PaymentRecoveryAttempt>();
     public DbSet<Order> Orders => Set<Order>();
+    public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<Game> Games => Set<Game>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -78,6 +79,21 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
         order.HasIndex(x => new { x.UserId, x.GameId }).IsUnique().HasDatabaseName("UX_Orders_OpenUserGame")
             .HasFilter("\"Status\" IN ('Pending', 'Approved')");
         order.HasIndex(x => new { x.UserId, x.PlacedAtUtc, x.Id });
+        var promotion = modelBuilder.Entity<Promotion>();
+        promotion.ToTable("Promotions", table =>
+        {
+            table.HasCheckConstraint("CK_Promotions_DiscountPercentage_Range", "\"DiscountPercentage\" > 0 AND \"DiscountPercentage\" <= 100");
+            table.HasCheckConstraint("CK_Promotions_DateRange", "\"EndsAtUtc\" > \"StartsAtUtc\"");
+            table.HasCheckConstraint("CK_Promotions_Creator", "\"CreatedByUserId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+        });
+        promotion.HasKey(x => x.Id);
+        promotion.Property(x => x.Id).ValueGeneratedNever();
+        promotion.Property(x => x.DiscountPercentage).HasPrecision(5, Promotion.DiscountPercentageScale);
+        promotion.Property(x => x.StartsAtUtc).HasColumnType("timestamp with time zone").HasPrecision(6);
+        promotion.Property(x => x.EndsAtUtc).HasColumnType("timestamp with time zone").HasPrecision(6);
+        promotion.HasIndex(x => new { x.GameId, x.StartsAtUtc, x.EndsAtUtc });
+        promotion.HasIndex(x => x.CreatedByUserId);
+        promotion.HasOne<Game>().WithMany().HasForeignKey(x => x.GameId).OnDelete(DeleteBehavior.Restrict);
         var game = modelBuilder.Entity<Game>();
         game.ToTable("Games", table => table.HasCheckConstraint("CK_Games_BasePrice_NonNegative", "\"BasePrice\" >= 0"));
         game.HasKey(x => x.Id).HasName("PK_Games");
