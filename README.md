@@ -36,8 +36,8 @@ Requer SDK 10.0.400, fixado em global.json, PostgreSQL16, RabbitMQ e uma chave p
 | `RabbitMq__Username` / `RabbitMq__Password` | Credencial própria obrigatória, sem padrão; sem tag administrativa | Secret |
 | `ConnectionStrings__Default` | Obrigatória; PostgreSQL do próprio Catalog | Secret |
 | `PGGSSENCMODE` | Perfil local: `disable`; opção do Npgsql para autenticação por senha, independente de `SslMode` | Ambiente do processo |
-| `Jwt__Issuer` | Obrigatória; exemplo `fcg-users` | ConfigMap |
-| `Jwt__Audience` | Obrigatória; exemplo `fcg-api` | ConfigMap |
+| `Jwt__Issuer` | Obrigatória; exemplo `fcg-users-api` | ConfigMap |
+| `Jwt__Audience` | Obrigatória; exemplo `fcg-clients` | ConfigMap |
 | `Jwt__Algorithm` | `RS256`; outro valor é recusado | ConfigMap |
 | `Jwt__ExpirationMinutes` | `15`; outro valor é recusado | ConfigMap |
 | `Jwt__ClockSkewSeconds` | `0`; outro valor é recusado | ConfigMap |
@@ -58,8 +58,8 @@ export RabbitMq__Host=localhost
 export RabbitMq__VirtualHost=/fcg
 export RabbitMq__Username=fcg_catalog
 export RabbitMq__Password=SUBSTITUA_LOCALMENTE
-export Jwt__Issuer=fcg-users
-export Jwt__Audience=fcg-api
+export Jwt__Issuer=fcg-users-api
+export Jwt__Audience=fcg-clients
 export Jwt__PublicKeyPath="$PWD/.local/jwt-public.pem"
 export Database__MigrateOnStartup=true
 export Swagger__Enabled=true
@@ -347,7 +347,7 @@ Não use credenciais em argumentos nem publique a saída operacional sem revisar
 
 ## Ambiente integrado
 
-A [orquestração](https://github.com/Gabriel-Silva-7/fcg-orchestration) prepara fontes limpas, credenciais locais, banco e broker; seus guias descrevem Compose, Kind, jornada real e recuperação. Use as revisões selecionadas da combinação, pois o README não certifica acesso público nem integração em `main`. Este repositório contém apenas o código e os dados de sua responsabilidade.
+A [orquestração](https://github.com/Gabriel-Silva-7/fcg-orchestration) prepara fontes limpas, credenciais locais, banco e broker; seus guias descrevem Compose, Kind, jornada real e recuperação. Use os cinco SHAs registrados no ambiente para identificar a combinação executada. As URLs identificam as origens; disponibilidade remota dos commits e acesso externo exigem conferência separada. Este repositório contém apenas o código e os dados de sua responsabilidade.
 
 ## Limite de portabilidade
 
