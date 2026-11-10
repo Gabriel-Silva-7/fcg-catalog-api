@@ -14,7 +14,7 @@ Catálogo de jogos em .NET 10, com PostgreSQL próprio e autenticação JWT RS25
 | `POST /api/v1/games/{gameId}/promotions` | Administrator no JWT e na projeção | 201, promoção criada |
 | `POST /api/v1/me/library` | Bearer User ou Administrator |202 após pedido + evento duráveis; não concede jogo |
 | `GET /api/v1/me/orders` | Bearer User ou Administrator |Pedidos próprios paginados |
-| `GET /api/v1/me/orders/{id}` | Bearer User ou Administrator |Pedido próprio ou404 opaco |
+| `GET /api/v1/me/orders/{id}` | Bearer User ou Administrator |Pedido próprio ou 404 opaco |
 | `GET /api/v1/me/library` | Bearer User ou Administrator |Biblioteca própria paginada, incluindo histórico inativo |
 
 Criação: `{ "title": "Celeste", "description": "Platformer", "basePrice": 59.90 }`. Título tem 1–200 caracteres após trim; descrição é opcional e limitada a 2.000. Preço obrigatório entre 0 e 9999999999999999.99, com centavos exatos. Títulos repetidos são permitidos. Retorno: `id`, `title`, `description`, `basePrice`, `currentPrice`, `discountPercentage`, `isActive`. `currentPrice` e `discountPercentage` consideram a maior promoção ativa; sem promoção, são iguais a basePrice e zero. Edição, desativação e promoções estão descritas abaixo.
@@ -25,11 +25,11 @@ Erros usam `application/problem+json`, com `status`, `type`, `code`, `instance` 
 
 ## Configuração
 
-Requer SDK 10.0.400, fixado em global.json, PostgreSQL16, RabbitMQ e uma chave pública correspondente ao emissor Users. O banco/role Catalog devem ser provisionados antes de iniciar; a infraestrutura local está no repositório fcg-orchestration. A role precisa de conexão e privilégios no próprio banco/schema, sem superuser ou acesso ao banco de Users.
+Requer SDK 10.0.400, fixado em global.json, PostgreSQL 16, RabbitMQ e uma chave pública correspondente ao emissor Users. O banco/role Catalog devem ser provisionados antes de iniciar; a infraestrutura local está no repositório fcg-orchestration. A role precisa de conexão e privilégios no próprio banco/schema, sem superuser ou acesso ao banco de Users.
 
 | Variável | Obrigatória / padrão | Origem esperada |
 |---|---|---|
-| `RabbitMq__Host` / `RabbitMq__Port` | Host obrigatório, porta padrão5672; sem URL com credenciais | ConfigMap |
+| `RabbitMq__Host` / `RabbitMq__Port` | Host obrigatório, porta padrão 5672; sem URL com credenciais | ConfigMap |
 | `Queues__Identity` | Fila durável própria; padrão `fcg-catalog-identity`, distinta de Payments | ConfigMap |
 | `Queues__Payments` | Fila durável própria; padrão `fcg-catalog-payments` | ConfigMap |
 | `RabbitMq__VirtualHost` | `/fcg`, obrigatório | ConfigMap |
@@ -48,7 +48,7 @@ Requer SDK 10.0.400, fixado em global.json, PostgreSQL16, RabbitMQ e uma chave p
 
 Catalog recusa configuração de chave privada, PEM privado, PKCS#1 e chave fraca. Apenas Users deve guardar a privada. Assinatura, algoritmo, emissor, audiência, validade e claims únicas `sub`/`role`/`jti` são verificados; sub e jti são GUIDs não vazios, e role é User ou Administrator. JSON ambíguo com membros duplicados é recusado.
 
-As rotas protegidas combinam o JWT com a projeção local de autorização recebida por eventos de Users. Estado desconhecido retorna503; bloqueado/excluído retorna401. Escritas administrativas exigem papel administrativo no token e na projeção atual. A convergência é assíncrona, conforme a seção de estado distribuído. O host publica pedidos, consome resultados e mantém biblioteca própria; pedidos e biblioteca são consultáveis pelo titular.
+As rotas protegidas combinam o JWT com a projeção local de autorização recebida por eventos de Users. Estado desconhecido retorna 503; bloqueado/excluído retorna 401. Escritas administrativas exigem papel administrativo no token e na projeção atual. A convergência é assíncrona, conforme a seção de estado distribuído. O host publica pedidos, consome resultados e mantém biblioteca própria; pedidos e biblioteca são consultáveis pelo titular.
 
 Para executar, configure as variáveis acima no ambiente e disponibilize a chave pública. Exemplo de configuração local, sem credenciais reais no Git:
 
@@ -73,7 +73,7 @@ Com Swagger habilitado: `/swagger` e `/swagger/v1/swagger.json`. Criação reque
 
 As migrations criam Games, Promotions, Orders, LibraryEntries, UserAuthorizationStates, MessageConflicts, PaymentRecoveryAttempts, schema de outbox e histórico EF no banco Catalog. InboxState é dependência estrutural do modelo MassTransit; o consumidor de pagamento usa transação própria e deduplicação permanente de negócio, sem inbox finito do middleware. BasePrice é numeric(18,2), com constraint de não negativo. CreatedAtUtc usa timestamp com fuso; CreatedByUserId é UUID de auditoria sem FK externa. Aplicar novamente a migration preserva dados. Falha de configuração/migration impede iniciar; não há reset automático.
 
-`GET /health/live` é anônimo e independente do PostgreSQL. `GET /health/ready` consulta jogos, promoções, pedidos, biblioteca, projeção de autorização, conflitos, histórico de recuperação e outbox, além do estado do bus e uma conexão AMQP real com limite de2s; retorna200 Healthy ou503 Unhealthy. Banco fora, schema ausente ou permissões insuficientes deixam readiness indisponível. Voltar a iniciar o container do banco não é prova de prontidão; aguarde a condição HTTP de saúde.
+`GET /health/live` é anônimo e independente do PostgreSQL. `GET /health/ready` consulta jogos, promoções, pedidos, biblioteca, projeção de autorização, conflitos, histórico de recuperação e outbox, além do estado do bus e uma conexão AMQP real com limite de 2s; retorna 200 Healthy ou 503 Unhealthy. Banco fora, schema ausente ou permissões insuficientes deixam readiness indisponível. Voltar a iniciar o container do banco não é prova de prontidão; aguarde a condição HTTP de saúde.
 
 ## Testes
 
@@ -112,8 +112,8 @@ A solução preserva Domain sem frameworks, Application→Domain, Infrastructure
 ## Modelo de pedidos
 
 `Order` guarda UserId/GameId, preço BRL exato e instante UTC de microssegundos como
-snapshot imutável no domínio. Começa Pending, versão1, sem conclusão/motivo.
-Finaliza Approved sem motivo ou Rejected/AmountAboveLimit, versão2. Repetir a mesma
+snapshot imutável no domínio. Começa Pending, versão 1, sem conclusão/motivo.
+Finaliza Approved sem motivo ou Rejected/AmountAboveLimit, versão 2. Repetir a mesma
 decisão/data é idempotente; outra decisão/data não altera terminal. A versão é
 um token de concorrência local, sem usar xmin como versão de negócio.
 
@@ -143,18 +143,18 @@ resposta, preservando o snapshot selecionado. A seleção inclui a maior promoç
 pagamento aprovado ou aquisição. A Location pode ser consultada com o mesmo titular. Se a resposta se perder, consultar os próprios pedidos antes de tentar
 outra compra: não há chave de idempotência de POST.
 
-Jogo inexistente/inativo produz404 antes de duplicidade. Pending do mesmo par
-produz409 `order_already_pending` com `orderId`, `location` e header Location.
-Approved produz409 `game_already_acquired`. Rejected permite nova tentativa com
-outro ID e preço corrente. Swagger documenta as duas formas de409 e o header202.
+Jogo inexistente/inativo produz 404 antes de duplicidade. Pending do mesmo par
+produz 409 `order_already_pending` com `orderId`, `location` e header Location.
+Approved produz 409 `game_already_acquired`. Rejected permite nova tentativa com
+outro ID e preço corrente. Swagger documenta as duas formas de 409 e o header 202.
 
 O commit usa lock transacional por usuário/jogo e índice único parcial. Colisão
 do índice exato reabre scope/contexto/outbox e lê estado confirmado para classificar
 o vencedor; não transforma Approved em Pending. Retries internos preservam o
-snapshot/ID selecionados. Três colisões sem estabilizar retornam503
+snapshot/ID selecionados. Três colisões sem estabilizar retornam 503
 `order_placement_unavailable`, Retry-After1, sem inventar estado existente.
 
-MassTransit8.5.11 bus outbox grava `OrderPlacedEvent` canônico com pedido, usando
+MassTransit 8.5.11 bus outbox grava `OrderPlacedEvent` canônico com pedido, usando
 MessageId e CorrelationId iguais ao OrderId. O entregador separado publica depois;
 broker indisponível deixa intenção recuperável, sem exigir outro POST. Payload tem
 OrderId/UserId/GameId/Price/PlacedAtUtc, BRL exato e UTC de seis casas. A topologia
@@ -182,7 +182,7 @@ aceite anterior. Não se revalida estado remoto da conta nessa finalização.
 Duplicado equivalente, mesmo com outro MessageId, não duplica aquisição. Status,
 razão ou data divergentes preservam o primeiro terminal e não compensam biblioteca.
 
-LibraryEntries mantém PK UserId/GameId, AcquisitionPrice numeric18,2 e AcquiredAtUtc.
+LibraryEntries mantém PK UserId/GameId, AcquisitionPrice numeric(18,2) e AcquiredAtUtc.
 OriginOrderId opcional conserva associação ao pedido novo; histórico sem Order
 permanece representável e bloqueia nova compra como já adquirido. FKs só apontam
 para Game/Order do próprio Catalog, sem FKUser. Não remover Game fisicamente com
@@ -217,12 +217,12 @@ continuam distintas da jornada final executada com os quatro serviços reais.
 
 Os três GETs de `/api/v1/me` exigem JWT e usam somente `sub` como titular, inclusive
 para Administrator. Não há seletor administrativo de outro usuário. Pedido alheio
-ou inexistente devolve404 `resource_not_found`, sem dados do titular. Parâmetros
+ou inexistente devolve 404 `resource_not_found`, sem dados do titular. Parâmetros
 extras de usuário não alteram o escopo da consulta.
 
 Pedidos retornam `orderId,gameId,price,status,placedAtUtc,completedAtUtc,rejectionReason`.
 Pending tem conclusão/motivo nulos; Approved tem conclusão original/motivo nulo;
-Rejected tem conclusão original/AmountAboveLimit. O primeiro GET depois do202 pode
+Rejected tem conclusão original/AmountAboveLimit. O primeiro GET depois do 202 pode
 observar diretamente o terminal; não depender de visualizar Pending antes.
 
 As listas usam `page`1–1000000 e `pageSize`1–100, padrão1/20, envelope
@@ -242,10 +242,10 @@ rotas, paginação, schemas e autorização Bearer.
 
 As rotas protegidas validam assinatura RS256, emissor, audiência, claims e a janela
 `nbf <= agora < exp`, com tolerância zero. Depois consultam a projeção local de
-Users em cada requisição. Estado ausente ou banco indisponível devolve503
-`auth_state_unavailable`, com `Retry-After: 1`; bloqueado/excluído devolve401.
+Users em cada requisição. Estado ausente ou banco indisponível devolve 503
+`auth_state_unavailable`, com `Retry-After: 1`; bloqueado/excluído devolve 401.
 Uma escrita administrativa exige Administrator tanto no token quanto na projeção
-atual; rebaixamento resulta403, sem elevar um token User de uma conta promovida.
+atual; rebaixamento resulta 403, sem elevar um token User de uma conta promovida.
 Rotas públicas, health e Swagger não consultam essa projeção por causa de um Bearer.
 
 `Queues:Identity` (padrão `fcg-catalog-identity`) recebe os contratos canônicos
@@ -272,32 +272,32 @@ A migração AuthorizationProjection é necessária antes de liberar readiness.
 ## Edição e desativação de jogos
 
 `PUT /api/v1/games/{id}` exige administrador e aceita título, descrição opcional
-e preço-base, com os mesmos limites de criação. Retorna200 com o jogo atualizado;
-inexistente ou inativo retorna404. Mantém ID, autor e data de criação. O preço
+e preço-base, com os mesmos limites de criação. Retorna 200 com o jogo atualizado;
+inexistente ou inativo retorna 404. Mantém ID, autor e data de criação. O preço
 atualizado não altera preço de pedido ou aquisição anterior.
 
-`DELETE /api/v1/games/{id}` desativa logicamente e retorna204, inclusive se já
-inativo. Inexistente retorna404. O registro permanece para preservar pedidos e
-bibliotecas; lista/detalhe públicos deixam de exibi-lo e novas compras retornam404.
+`DELETE /api/v1/games/{id}` desativa logicamente e retorna 204, inclusive se já
+inativo. Inexistente retorna 404. O registro permanece para preservar pedidos e
+bibliotecas; lista/detalhe públicos deixam de exibi-lo e novas compras retornam 404.
 Pedidos aceitos antes da leitura da desativação continuam até o resultado.
 
 As duas operações serializam pelo registro no PostgreSQL e confirmam a transação
 antes do sucesso. Se DELETE vence a edição concorrente, PUT observa inativo e
-retorna404; se PUT vence, DELETE pode desativar o conteúdo editado. Não há reativação
+retorna 404; se PUT vence, DELETE pode desativar o conteúdo editado. Não há reativação
 por PUT, token de versão exigido ou garantia de cancelamento retroativo de compra.
 
 ## Promoções e preço vigente
 
-`POST /api/v1/games/{gameId}/promotions` exige administrador e retorna201 com
+`POST /api/v1/games/{gameId}/promotions` exige administrador e retorna 201 com
 `Location` para o jogo. Corpo: `discountPercentage,startsAt,endsAt`; resposta:
 `id,gameId,discountPercentage,startsAt,endsAt,isCurrentlyActive`. Jogo inexistente
-ou inativo retorna404. Percentual deve ser maior que0 e no máximo100, com centésimos
+ou inativo retorna 404. Percentual deve ser maior que 0 e no máximo 100, com centésimos
 exatos. Datas devem ser UTC, representáveis em microssegundos, e fim maior que
-início. Entrada com fração submicrossegundo retorna400 em vez de sofrer truncamento.
+início. Entrada com fração submicrossegundo retorna 400 em vez de sofrer truncamento.
 
 Sobreposições são permitidas: aplica o maior desconto ativo, início inclusivo/fim
 exclusivo, usando o relógio do servidor. Arredondamento a centavos é AwayFromZero:
-R$59,90 com25% resultaR$44,93. Lista, detalhe e resposta de edição usam a mesma regra;
+R$59,90 com 25% resultaR$44,93. Lista, detalhe e resposta de edição usam a mesma regra;
 ordenação `basePrice` continua pelo preço-base. Promoções ficam no próprio banco,
 com FK apenas para Game; o criador é identificador de auditoria sem FK para Users.
 
