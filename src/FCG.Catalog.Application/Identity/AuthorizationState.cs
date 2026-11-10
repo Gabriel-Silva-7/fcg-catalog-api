@@ -8,7 +8,7 @@ public interface IAuthorizationStateReader
     Task<AuthorizationState?> FindAsync(Guid userId, CancellationToken cancellationToken);
 }
 
-/// <summary>CON02 decisions over the fields Catalog owns, without fabricating retained contact data.</summary>
+/// <summary>Authorization decisions over the fields Catalog owns, without fabricating retained contact data.</summary>
 public static class CatalogAuthorization
 {
     public static AuthorizationDecision Decide(TokenClaims token, AuthorizationState? current, bool stateAvailable)

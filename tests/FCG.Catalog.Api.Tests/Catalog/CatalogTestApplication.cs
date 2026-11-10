@@ -41,8 +41,8 @@ public sealed class CatalogTestApplication : WebApplicationFactory<Program>, IAs
 {
     private readonly CatalogPostgres postgres;
     private readonly RSA key = RSA.Create(2048);
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "fcg-cat01-" + Guid.NewGuid().ToString("N"));
-    private readonly string database = "cat01_" + Guid.NewGuid().ToString("N");
+    private readonly string directory = Path.Combine(Path.GetTempPath(), "fcg-catalog-tests-" + Guid.NewGuid().ToString("N"));
+    private readonly string database = "catalog_tests_" + Guid.NewGuid().ToString("N");
     private readonly string role = "fcg_catalog_" + Guid.NewGuid().ToString("N");
     private readonly Action<IWebHostBuilder>? customize;
     public CapturedLogs Logs { get; } = new();
